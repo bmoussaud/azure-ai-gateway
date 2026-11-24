@@ -99,7 +99,7 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <div class="controls">
 <select id="scenario" disabled><option value="baseline">Tester A et B</option><option value="weighted-routing">Répartir le trafic 80/20</option><option value="failover">Simuler une panne</option><option value="token-rate">Tester la limite par minute</option><option value="token-quota">Tester le quota horaire</option><option value="reset">Rétablir le profil initial</option><option disabled>Budget monétaire indisponible · tarifs incomplets</option></select>
 <button disabled id="start" class="primary">Start</button><button disabled id="stop">Stop</button>
-</div><p class="muted"><small>Start lance le scénario choisi. Stop laisse finir l’appel en cours, conserve les réponses et rétablit le profil initial. Le routage 80/20 prévoit 50 appels espacés ; les autres scénarios envoient 12 appels au maximum.</small></p>
+</div><p class="muted"><small>Start lance le scénario choisi. Stop laisse finir l’appel en cours et rétablit le profil initial. Routage 80/20 : 10 appels, avec au maximum 2 s de pause entre deux appels, hors temps de réponse Azure. La répartition observée peut varier.</small></p>
 <label for="history">Exécution affichée </label><select id="history"><option>Aucune exécution</option></select>
 </section>
 <section class="live" aria-labelledby="live-title">
@@ -143,7 +143,7 @@ function describe(e,j){
     case "awaiting-traces":return "Appels terminés. Attente des traces d’Application Insights.";
     case "traces":return `Application Insights : ${e.count} trace(s) reçue(s) sur ${e.total}.`;
     case "verifying":return "Comparaison des traces Azure avec les résultats attendus.";
-    case "verified":return "Scénario vérifié : les traces Azure confirment les résultats.";
+    case "verified":return j.scenario==="weighted-routing"?"Les traces Azure confirment les backends utilisés. Sur 10 appels, la répartition n’est pas forcément 8/2.":"Scénario vérifié : les traces Azure confirment les résultats.";
     case "restored":return "Le profil initial est rétabli.";
     case "repair":return "Tentative de remise en état après interruption.";
     case "failed":return "Le scénario a échoué. Les résultats ne sont pas certifiés.";
@@ -159,7 +159,7 @@ function showActivity(job){
   text("live-title",job&&!awaiting?`Fil d’exécution · ${names[job.scenario]}`:"Fil d’exécution");
   text("action",awaiting?"Demande de lancement en cours…":launchError?"Lancement non confirmé. Vérifiez l’historique avant de réessayer.":job?.status==="failed"&&job.finishedAt?"Échec du scénario · résultats non certifiés.":last?describe(last,job):job?(labels[job.status]||"Préparation"):"Choisissez un scénario pour suivre ses actions ici.");
   const count=job?.requests.length||0;
-  const target=({baseline:4,"weighted-routing":50,failover:7})[job?.scenario];
+  const target=({baseline:4,"weighted-routing":10,failover:7})[job?.scenario];
   text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 12 au maximum`);
   text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · ${job.native.length}/${count} traces Azure · profil initial ${job.restored?"rétabli":"non encore confirmé"}.`);
   const feed=el("feed"), id=awaiting?null:job?.id;

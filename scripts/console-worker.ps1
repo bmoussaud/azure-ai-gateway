@@ -10,6 +10,6 @@ if ($Scenario -eq 'reset') {
     & (Join-Path $PSScriptRoot 'reset-demo.ps1') -ConfigPath $ConfigPath
 } else {
     & (Join-Path $PSScriptRoot 'run-scenario.ps1') -ConfigPath $ConfigPath -Scenario $Scenario `
-        -Samples 50 -OutputDirectory $OutputDirectory -EventPath (Join-Path $OutputDirectory 'events.jsonl') `
+        -WorkshopRouting:($Scenario -eq 'weighted-routing') -OutputDirectory $OutputDirectory -EventPath (Join-Path $OutputDirectory 'events.jsonl') `
         -ActivityPath (Join-Path $OutputDirectory 'activity.jsonl') -StopPath (Join-Path $OutputDirectory 'stop.requested')
 }

@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$ConfigPath,
     [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Scenario,
     [ValidateRange(50,200)][int]$Samples = 100,
+    [switch]$WorkshopRouting,
     [string]$BaselineEvidencePath,
     [string]$EventPath,
     [string]$ActivityPath,
@@ -26,7 +27,13 @@ $ids = Get-DemoIds $config
 $tokenA = Get-DemoToken A $config
 $tokenB = Get-DemoToken B $config
 $endpoint = Get-DemoRuntimeEndpoint $state
+if ($WorkshopRouting) {
+    if ($Scenario -ne 'weighted-routing' -or $PSBoundParameters.ContainsKey('Samples')) {
+        throw 'Workshop routing is a fixed ten-call weighted demonstration.'
+    }
+}
 $requests = if ($Scenario -eq 'weighted-routing') { $Samples } elseif ($Scenario -eq 'failover') { 8 } else { 12 }
+if ($WorkshopRouting) { $requests = 10 }
 $attempts = if ($Scenario -eq 'failover') { 2 } else { 1 }
 $estimate = Assert-DemoRunBudget $config $requests $attempts
 $delaySeconds = 0
@@ -38,6 +45,9 @@ foreach ($project in $state.projects.Values) {
         if ($limit.count -le 0 -or $limit.renewalPeriod -le 0) { throw 'Invalid live backend rate limit.' }
         $units = if ($limit.key -eq 'token') { 1088 * $attempts } else { $attempts }
         $delaySeconds = [Math]::Max($delaySeconds, [Math]::Ceiling($units * $limit.renewalPeriod / $limit.count))
+    }
+    if ($WorkshopRouting -and $delaySeconds -gt 2) {
+        throw "Backend capacity requires $delaySeconds seconds between sends. Increase backend capacity before running the two-second workshop demo."
     }
 }
 if ($Scenario -eq 'cost-limit') {
@@ -123,7 +133,7 @@ try {
             }
         }
         weighted-routing {
-            for ($i=0; $i -lt $Samples; $i++) { Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'weighted') }
+            for ($i=0; $i -lt $requests; $i++) { Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'weighted') }
         }
         failover {
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'primary')
@@ -177,6 +187,7 @@ try {
         startedBy='PowerShell lab runner'; concurrency=1; clientRetries=0
         conservativeTokenCostEstimateUsd=$estimate; requestCeiling=$requests
         minimumInterRequestSpacingSeconds=$delaySeconds
+        workshopRouting=[bool]$WorkshopRouting
         restorationFailures=@($restorationFailures); results=@($results.ToArray())
     } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $resultPath
     Write-Host "HTTP observations saved: $resultPath. Not a native gateway proof until verify-results.ps1 succeeds."

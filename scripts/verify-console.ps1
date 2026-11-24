@@ -1,6 +1,6 @@
 #requires -Version 7.4
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly, [switch]$StopAfterFirstResponse)
+param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly, [switch]$StopAfterFirstResponse, [switch]$WorkshopRoutingOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uri = [uri]$Url
@@ -82,7 +82,7 @@ if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'id="team-a"' -or
 $csrf = Invoke-WebRequest "$Url/api/run" -Method Post -ContentType application/json `
     -Headers $authorization -Body '{"scenario":"baseline"}' -SkipHttpErrorCheck -TimeoutSec 30
 if ($csrf.StatusCode -ne 403) { throw 'An authenticated action without CSRF protection was not refused.' }
-$run = Invoke-ConsoleAction baseline
+$run = Invoke-ConsoleAction ($WorkshopRoutingOnly ? 'weighted-routing' : 'baseline')
 $overlapHeaders = $authorization.Clone()
 $overlapHeaders.Origin = $Url
 $overlapHeaders.'X-Demo-Csrf' = $state.csrf
@@ -91,7 +91,18 @@ $overlap = Invoke-WebRequest "$Url/api/run" -Method Post -ContentType applicatio
 if ($overlap.StatusCode -ne 409) { throw 'Overlapping scenario was not refused.' }
 $jobs = [Collections.Generic.List[object]]::new()
 $jobs.Add((Wait-ConsoleJob $run.id))
-if ($LiveBaselineOnly -or $StopAfterFirstResponse) {
+if ($WorkshopRoutingOnly) {
+    $j = $jobs[0]
+    $pauses = @($j.activity | Where-Object kind -eq 'pacing')
+    if ($j.status -ne 'verified' -or $j.requestCeiling -ne 10 -or $j.requests.Count -ne 10 -or
+        $j.native.Count -ne 10 -or @($j.requests | Where-Object status -ne 200).Count -or
+        $j.minimumSpacingSeconds -gt 2 -or @($pauses | Where-Object seconds -gt 2).Count) {
+        throw 'Ten native-backed responses with a two-second pacing cap were not observed.'
+    }
+    $primary = @($j.native | Where-Object Backend -eq 'backend-1/demo-model').Count
+    Write-Host "Workshop routing: 10/10 HTTP 200; primary $primary, secondary $(10-$primary); pacing $($j.minimumSpacingSeconds)s."
+}
+if ($LiveBaselineOnly -or $StopAfterFirstResponse -or $WorkshopRoutingOnly) {
     $jobs[0] | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
     if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 4 responses, native evidence and restored gateway.' }
     return

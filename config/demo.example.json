@@ -10,7 +10,7 @@
   "modelVersion": "<available-version>",
   "deploymentName": "demo-chat-model",
   "modelSku": "GlobalStandard",
-  "modelCapacity": 1,
+  "modelCapacity": 40,
   "teamAObjectId": "<existing-workload-object-guid>",
   "teamBObjectId": "<different-workload-object-guid>",
   "budgetEmails": [],

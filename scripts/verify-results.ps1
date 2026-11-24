@@ -46,8 +46,16 @@ foreach ($result in $run.results) {
 if ($run.scenario -eq 'weighted-routing') {
     $n = $rows.Count
     $primaryCount = @($rows | Where-Object Backend -IEQ $primary).Count
-    $tolerance = Assert-DemoWeightedDistribution $primaryCount $n
-    Write-Host "Observed native primary distribution: $primaryCount/$n; 80/20 tolerance +/- $tolerance."
+    if ($run['workshopRouting']) {
+        if ($n -ne 10 -or $run.minimumInterRequestSpacingSeconds -gt 2 -or
+            @($run.results | Where-Object { -not $_.completion -or $_.status -ne 200 }).Count) {
+            throw 'Expected 10 completed workshop calls with at most two seconds of intentional spacing.'
+        }
+        Write-Host "Observed native primary selections: $primaryCount/$n. This sample does not certify the configured weights."
+    } else {
+        $tolerance = Assert-DemoWeightedDistribution $primaryCount $n
+        Write-Host "Observed native primary distribution: $primaryCount/$n; 80/20 tolerance +/- $tolerance."
+    }
 }
 $evidencePath = [IO.Path]::ChangeExtension($ResultsPath, 'verified.json')
 @{ runId=$run.runId; scenario=$run.scenario; gatewayId=$state.gatewayId; verifiedAt=[DateTimeOffset]::UtcNow.ToString('o')
