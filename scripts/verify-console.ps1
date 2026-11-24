@@ -1,6 +1,6 @@
 #requires -Version 7.4
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly, [switch]$StopAfterFirstResponse, [switch]$WorkshopRoutingOnly)
+param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly, [switch]$StopAfterFirstResponse, [switch]$WorkshopRoutingOnly, [switch]$IdentityRoutingOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uri = [uri]$Url
@@ -82,7 +82,7 @@ if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'id="team-a"' -or
 $csrf = Invoke-WebRequest "$Url/api/run" -Method Post -ContentType application/json `
     -Headers $authorization -Body '{"scenario":"baseline"}' -SkipHttpErrorCheck -TimeoutSec 30
 if ($csrf.StatusCode -ne 403) { throw 'An authenticated action without CSRF protection was not refused.' }
-$run = Invoke-ConsoleAction ($WorkshopRoutingOnly ? 'weighted-routing' : 'baseline')
+$run = Invoke-ConsoleAction ($IdentityRoutingOnly ? 'identity-routing' : $WorkshopRoutingOnly ? 'weighted-routing' : 'baseline')
 $overlapHeaders = $authorization.Clone()
 $overlapHeaders.Origin = $Url
 $overlapHeaders.'X-Demo-Csrf' = $state.csrf
@@ -102,7 +102,24 @@ if ($WorkshopRoutingOnly) {
     $primary = @($j.native | Where-Object Backend -eq 'backend-1/demo-model').Count
     Write-Host "Workshop routing: 10/10 HTTP 200; primary $primary, secondary $(10-$primary); pacing $($j.minimumSpacingSeconds)s."
 }
-if ($LiveBaselineOnly -or $StopAfterFirstResponse -or $WorkshopRoutingOnly) {
+if ($IdentityRoutingOnly) {
+    $j = $jobs[0]
+    if ($j.status -ne 'verified' -or $j.requests.Count -ne 10 -or $j.native.Count -ne 10 -or
+        $j.requestCeiling -ne 10 -or $j.minimumSpacingSeconds -gt 2 -or $j.clientRetries -ne 0 -or
+        @($j.activity | Where-Object { $_.kind -eq 'pacing' -and $_.seconds -gt 2 }).Count) {
+        throw 'Identity HTTPS scenario did not confirm ten bounded, natively verified calls.'
+    }
+    foreach ($team in @('A','B')) {
+        $calls = @($j.requests | Where-Object team -CEQ $team)
+        $expected = if ($team -ceq 'B') { 'backend-2/demo-model' } else { 'backend-1/demo-model' }
+        if ($calls.Count -ne 5 -or @($calls | Where-Object { $_.status -ne 200 -or $_.alias -cne 'demo-chat' }).Count -or
+            @($j.native | Where-Object { $_.TraceId -cin $calls.traceId -and $_.Backend -ceq $expected -and $_.Attempts -eq 1 }).Count -ne 5) {
+            throw "Identity HTTPS scenario did not prove five $team calls on $expected."
+        }
+    }
+    Write-Host 'Native identity routing: A -> Backend 1 (5/5), B -> Backend 2 (5/5), no fallback or client retry, baseline restored.'
+}
+if ($LiveBaselineOnly -or $StopAfterFirstResponse -or $WorkshopRoutingOnly -or $IdentityRoutingOnly) {
     $jobs[0] | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
     if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 2 responses, native evidence and restored gateway.' }
     return

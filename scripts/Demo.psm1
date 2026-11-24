@@ -111,6 +111,8 @@ function Test-DemoSubset {
     if ($null -eq $Expected) { return $null -eq $Actual }
     if ($Expected -is [System.Collections.IDictionary]) {
         if ($Actual -isnot [System.Collections.IDictionary]) { return $false }
+        if ($Expected.Contains('resourceId') -and $Expected.Contains('priority') -and $Expected.Contains('weight') -and
+            -not $Expected.Contains('when') -and $Actual.Contains('when') -and $Actual.when) { return $false }
         foreach ($key in $Expected.Keys) {
             if ($key -eq 'policies' -and $Expected[$key] -is [array] -and $Expected[$key].Count -eq 0 -and -not $Actual.Contains($key)) { continue }
             if ($key -eq 'id' -and -not $Actual.Contains($key) -and $Expected.Contains('type') -and
@@ -228,8 +230,18 @@ function Reset-DemoLabFaults {
 }
 
 function Read-DemoProfile {
-    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Name)
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Name)
     $json = Get-Content -LiteralPath (Join-Path $script:Root "config\profiles\$Name.json") -Raw
+    if ($Name -eq 'identity-routing') {
+        $tenant = Invoke-DemoAz @('account','show','--subscription',$Config.subscriptionId,'--query','tenantId')
+        $tenantId = [guid]::Empty
+        $objectId = [guid]::Empty
+        if (-not [guid]::TryParse([string]$tenant, [ref]$tenantId) -or $tenantId -eq [guid]::Empty -or
+            -not [guid]::TryParse([string]$Config.teamBObjectId, [ref]$objectId) -or $objectId -eq [guid]::Empty) {
+            throw 'Identity routing requires a verified subscription tenant and a nonempty B object ID.'
+        }
+        $json = $json.Replace('__TEAM_B_ENTRA_IDENTITY__', "$($tenantId.ToString()):$($objectId.ToString())")
+    }
     return $json.Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId) | ConvertFrom-Json -AsHashtable
 }
 
@@ -238,13 +250,17 @@ function Get-DemoAliasTargets {
     for ($i=0; $i -lt 2; $i++) {
         $priority = $Definition.backends[$i].priority
         if ($Alias -eq 'demo-alt' -and $Name -ne 'weighted-routing') { $priority = 1 - $priority }
-        @{ backend = $i + 1; priority = $priority; weight = $Definition.backends[$i].weight }
+        $target = @{ backend = $i + 1; priority = $priority; weight = $Definition.backends[$i].weight }
+        if ($Alias -eq 'demo-chat' -and $Definition.backends[$i].ContainsKey('when')) {
+            $target.when = $Definition.backends[$i].when
+        }
+        $target
     }
 }
 
 function Get-DemoProfileSummary {
     # Browser-safe explanation of exactly what Set-DemoProfile writes (no identity claims).
-    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Name)
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Name)
     $p = Read-DemoProfile $Config $Name
     $routes = @(foreach ($alias in @('demo-chat','demo-alt')) {
         @{ alias = $alias; targets = @(Get-DemoAliasTargets $p $Name $alias) }
@@ -264,7 +280,7 @@ function Get-DemoProfileSummary {
 }
 
 function Set-DemoProfile {
-    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Profile)
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Profile)
     Assert-DemoGroup $Config
     $ids = Get-DemoIds $Config
     $p = Read-DemoProfile $Config $Profile
@@ -292,8 +308,10 @@ function Set-DemoProfile {
     Set-DemoArmProperties $ids.workspace @{ policies = @($p.policies) } -Current $workspace
     foreach ($alias in @('demo-chat','demo-alt')) {
         $targets = foreach ($target in Get-DemoAliasTargets $p $Profile $alias) {
-            @{ resourceId = "$($ids.workspace)/modelProviders/backend-$($target.backend)/models/demo-model"
+            $mapping = @{ resourceId = "$($ids.workspace)/modelProviders/backend-$($target.backend)/models/demo-model"
                priority = $target.priority; weight = $target.weight }
+            if ($target.ContainsKey('when')) { $mapping.when = $target.when }
+            $mapping
         }
         $properties = @{
             aliasName = $alias; backendModels = @($targets); selectionOrder = @('priority')
@@ -302,6 +320,14 @@ function Set-DemoProfile {
         if ($p.failures.Count) { $properties.maxRetryAttempts = $p.maxRetryAttempts }
         Set-DemoArmProperties "$($ids.workspace)/aliases/$alias" $properties -Method put
         $read = Get-DemoArm "$($ids.workspace)/aliases/$alias"
+        foreach ($target in @($targets)) {
+            $actual = @($read.properties.backendModels | Where-Object resourceId -IEQ $target.resourceId)
+            if ($actual.Count -ne 1 -or
+                ($target.ContainsKey('when') -and (-not $actual[0].ContainsKey('when') -or $actual[0].when -cne $target.when)) -or
+                (-not $target.ContainsKey('when') -and $actual[0].ContainsKey('when') -and $actual[0].when)) {
+                throw 'Alias replacement did not preserve/clear the exact backend condition.'
+            }
+        }
         if (-not $p.failures.Count -and $read.properties.ContainsKey('maxRetryAttempts') -and $read.properties.maxRetryAttempts -gt 0) {
             throw 'Alias replacement did not clear the previous attempt budget.'
         }
@@ -319,6 +345,40 @@ function Get-DemoRequestsQuery {
         Replace('__GATEWAY_ID__', $State.gatewayId).
         Replace('__INSIGHTS_ID__', $State.insightsId).
         Replace('__GATEWAY_HOSTNAME__', $State.hostname)
+}
+
+function Assert-DemoIdentityRouting {
+    param([hashtable]$Run, [array]$Rows)
+    if ($Run.clientRetries -ne 0 -or $Run.concurrency -ne 1 -or $Run.minimumInterRequestSpacingSeconds -gt 2 -or
+        $Run.restorationFailures.Count -or $Run.results.Count -gt 10 -or
+        @($Run.results | Where-Object alias -CNE 'demo-chat').Count) {
+        throw 'Identity routing requires bounded demo-chat calls, no client retry and restored baseline.'
+    }
+    $negative = [bool]$Run['identityBackendFault']
+    if ($Run.results.Count -ne $(if ($negative) { 4 } else { 10 }) -or
+        @($Run.results | Where-Object team -CEQ 'A').Count -ne $(if ($negative) { 2 } else { 5 }) -or
+        @($Run.results | Where-Object team -CEQ 'B').Count -ne $(if ($negative) { 2 } else { 5 })) {
+        throw 'Identity routing did not produce the complete expected A/B sample.'
+    }
+    foreach ($result in $Run.results) {
+        $matched = @($Rows | Where-Object TraceId -CEQ $result.traceId)
+        if ($matched.Count -ne 1) { throw 'Identity routing needs exactly one native row per trace.' }
+        $row = $matched[0]
+        $expected = if ($result.team -ceq 'B') { 'backend-2/demo-model' } else { 'backend-1/demo-model' }
+        if ($row.Backend -cne $expected -or [int]$row.Attempts -ne 1) {
+            throw 'Identity routing violated the intended backend pin or made another backend send.'
+        }
+        if ($negative -and $result.phase -ceq 'pinned-unavailable') {
+            if ($result.team -cne 'B' -or $result.status -lt 400 -or $result.completion) {
+                throw 'The hard-pin negative check needs an explicit B error, not a completion.'
+            }
+        } elseif (-not $result.completion -or $result.status -ne 200) {
+            throw 'Identity routing control/healthy calls must all complete with HTTP 200.'
+        }
+    }
+    if ($negative -and @($Run.results | Where-Object phase -CEQ 'pinned-unavailable').Count -ne 1) {
+        throw 'Missing unique backend-2-down hard-pin observation.'
+    }
 }
 
 function Invoke-DemoQuery {

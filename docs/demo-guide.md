@@ -164,6 +164,7 @@ Run one scenario at a time; the workspace configuration is shared. Each run rest
 |---|---|---|
 | Stable aliases | `-Scenario baseline` | Backend 1 serves `demo-chat` for A/B. With `-IncludeAlternateAlias`, backend 2 also serves `demo-alt`. |
 | Weighted routing | `-Scenario weighted-routing -Samples 100` | 50-200 successful requests; backend 1 fraction within four binomial standard deviations of 0.8. Not an exact 80/20 promise. |
+| Caller identity | `-Scenario identity-routing` | Ten alternating `demo-chat` calls: five A on backend 1, five B on backend 2; validated native `oid` and backend per trace, one backend send each, zero client retry and restored baseline. |
 | Failover/recovery | `-Scenario failover` | Healthy primary, two backend sends on failover, one send for B while excluded, visible all-down error, primary restored for A and B. `-IncludeAlternateAlias` adds the `demo-alt` secondary checks. |
 | Token rate | `-Scenario token-rate` | A rejected repeatedly while B continues; rejection attributed to `tokenLimit`. `-IncludeAlternateAlias` also proves that switching to `demo-alt` does not bypass the allowance. |
 | Cumulative tokens | `-Scenario token-quota` | Same checks with an hourly token allowance. It is not a lifetime token quota. |
@@ -190,6 +191,34 @@ Native cost policies check recorded spend before admission and charge after comp
 The failover runner temporarily maps a registered model to `/demo-injected-unavailable`, expecting an upstream 404. The special 404 rule is **laboratory configuration only**. Native failure rules also cover null responses and 408/429/500/502/503/504, but real network timeouts, regional outages and throttling have not been tested.
 
 No injector service is deployed. The runner performs no client retry or backend selection. It restores the exact original explicit endpoint mappings, waits 35 seconds for the configured 30-second exclusion, then requests recovery. Propagation may take longer; a failed check must remain visible rather than being presented as success.
+
+### Présenter « Identité de l’appelant · B → Backend 2 »
+
+1. Choisir ce scénario dans la console, puis **Start**. Dire : « A et B utilisent la même URL et le même alias `demo-chat`. Ce sont leurs identités d’application Entra validées qui diffèrent ; aucun header libre ne choisit le backend. »
+2. Pendant **Configuration de la passerelle**, lire la condition CEL et sa traduction dans le journal. Backend 1 exclut uniquement l’identité B ; Backend 2 reste éligible sans condition. Dire : « Azure évalue cette condition avant la priorité : A conserve Backend 1 prioritaire ; B n’est éligible que pour Backend 2. La lecture ARM prouve la configuration, pas encore le dispatch. »
+3. Suivre cinq appels A et cinq appels B en alternance, avec au plus deux secondes de pause intentionnelle, hors latence Azure. **Stop** laisse finir l’appel en cours et restaure le profil initial ; une exécution partielle n’est pas certifiée.
+4. Attendre **Vérifié**. Les traits verts et les backends des tableaux n’apparaissent qu’après jointure des traces natives par trace ID. Le résultat attendu est **A : 5/5 Backend 1 ; B : 5/5 Backend 2, zéro B sur Backend 1**, un envoi backend par requête et zéro retry client. Le cadenas sur Backend 1 est une règle configurée, jamais une preuve de dispatch.
+5. Dire : « La baseline est restaurée et relue, y compris le retrait de la condition CEL. Une segmentation par équipe/identité d’application peut isoler un déploiement dédié, un modèle ou des quotas propres à une équipe. Ici, seule l’éligibilité des deux backends du même modèle change ; les quotas et modèles différents ne sont pas démontrés. »
+
+Le profil `config\profiles\identity-routing.json` remplace `__TEAM_B_ENTRA_IDENTITY__` par `<tenantId>:<objectIdB>` en minuscules. Le tenant est lu sur la souscription explicite ; les deux valeurs sont validées comme GUID avant interpolation. L’expression est `@cel(!(has(authorization.identity) && has(authorization.identity.id) && authorization.identity.id == '<tenantId>:<objectIdB>'))`. `demo-alt` reste déployé, sans cette condition et caché ; ce scénario ne l’appelle pas. Cette règle d’alias n’interdit donc pas une autre route déjà autorisée.
+
+**Pour aller plus loin : « toujours » signifie aussi aucune bascule de B.** Épingler B ne garantit pas sa disponibilité : si Backend 2 tombe, B doit recevoir une erreur explicite, sans sélectionner Backend 1, pendant que A continue. Le contrôle CLI borné ci-dessous effectue un appel B sain, injecte la même mauvaise route de laboratoire sur Backend 2, attend 20 s de propagation, observe l’erreur B puis deux succès A. `finally` restaure la route originale et la baseline, même après erreur.
+
+```powershell
+# Mettre d'abord la console en maintenance ; ne pas modifier la gateway pendant une démonstration.
+az containerapp exec --subscription '<subscription-id>' --resource-group '<demo-group>' `
+  --name '<gateway-name>-console' --command 'python3 /app/console/operate.py maintenance'
+.\scripts\run-with-managed-callers.ps1 -ConfigPath .\config\demo.local.json `
+  -Scenario identity-routing -IdentityBackendFault
+.\scripts\verify-results.ps1 -ConfigPath .\config\demo.local.json -ResultsPath '.\.demo\<actual-run-id>.json'
+# Redémarrer la révision console après ce contrôle pour réouvrir ses commandes.
+```
+
+Le contrôle positif HTTPS est aussi automatisé par `python3 /app/console/operate.py accept-identity` via `az containerapp exec`. Il vérifie l’accès Entra/CSRF, refuse un scénario concurrent et conserve les preuves sans jeton dans `/tmp/console-acceptance.json`. La télémétrie existante exporte déjà `oid` et `tid` natifs ; l’identité n’est pas seulement une étiquette du runner.
+
+**Qualification réelle du 24 novembre 2026 :** les dix appels de la console HTTPS ont tous terminé en HTTP 200 : A **5/5 sur `backend-1/demo-model`**, B **5/5 sur `backend-2/demo-model`**, zéro B sur Backend 1. Chaque trace native confirme l’`oid`, le backend et un seul envoi ; zéro retry client, espacement configuré de 2 s. L’accès anonyme a reçu 401, l’identité non autorisée 403, l’absence de CSRF 403 et le lancement concurrent 409. Preuve locale : `.demo\identity-console-acceptance.json` (job `92d2869870424691a225fbd31afb9b5c`). L’interface de cette nouvelle version n’a pas été vérifiée visuellement : l’automatisation passe réellement par son API HTTPS protégée.
+
+Le contrôle négatif réel a confirmé B sain HTTP 200 sur Backend 2, puis B HTTP **404** sur ce même backend sous mauvaise route injectée, **sans nouvelle tentative ni bascule** ; les deux appels A ont continué en HTTP 200 sur Backend 1. Preuves HTTP/natives : `.demo\5a944b9d63a346c5acd1cd4d2d3698f2.json` et `.verified.json`. Les deux endpoints originaux et la baseline sans condition ont ensuite été relus ; le runner ACI est arrêté. Les preuves restent locales et ignorées par Git. Une erreur 404 de laboratoire ne qualifie pas une panne réseau ou régionale.
 
 ## 5. Show the Workbook
 

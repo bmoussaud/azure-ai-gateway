@@ -2,9 +2,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Scenario,
+    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Scenario,
     [ValidateRange(50,200)][int]$Samples = 100,
     [switch]$WorkshopRouting,
+    [switch]$IdentityBackendFault,
     # The demo-alt alias stays deployed; its calls are opt-in CLI checks (both backends, no quota bypass by alias).
     [switch]$IncludeAlternateAlias,
     [string]$BaselineEvidencePath,
@@ -29,6 +30,9 @@ $ids = Get-DemoIds $config
 $tokenA = Get-DemoToken A $config
 $tokenB = Get-DemoToken B $config
 $endpoint = Get-DemoRuntimeEndpoint $state
+if ($IdentityBackendFault -and $Scenario -ne 'identity-routing') {
+    throw 'The hard-pin negative check applies only to identity routing.'
+}
 if ($WorkshopRouting) {
     if ($Scenario -ne 'weighted-routing' -or $PSBoundParameters.ContainsKey('Samples')) {
         throw 'Workshop routing is a fixed ten-call weighted demonstration.'
@@ -36,6 +40,7 @@ if ($WorkshopRouting) {
 }
 $requests = if ($Scenario -eq 'weighted-routing') { $Samples } elseif ($Scenario -eq 'failover') { 8 } else { 12 }
 if ($WorkshopRouting) { $requests = 10 }
+if ($Scenario -eq 'identity-routing') { $requests = if ($IdentityBackendFault) { 4 } else { 10 } }
 $attempts = if ($Scenario -eq 'failover') { 2 } else { 1 }
 # Native traces showed a simulated fault takes about 6-11 s to reach the gateway data plane after ARM confirms it.
 $faultPropagationSeconds = 20
@@ -50,7 +55,7 @@ foreach ($project in $state.projects.Values) {
         $units = if ($limit.key -eq 'token') { 1088 * $attempts } else { $attempts }
         $delaySeconds = [Math]::Max($delaySeconds, [Math]::Ceiling($units * $limit.renewalPeriod / $limit.count))
     }
-    if ($WorkshopRouting -and $delaySeconds -gt 2) {
+    if (($WorkshopRouting -or $Scenario -eq 'identity-routing') -and $delaySeconds -gt 2) {
         throw "Backend capacity requires $delaySeconds seconds between sends. Increase backend capacity before running the two-second workshop demo."
     }
 }
@@ -143,6 +148,20 @@ try {
         weighted-routing {
             for ($i=0; $i -lt $requests; $i++) { Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'weighted') }
         }
+        identity-routing {
+            if ($IdentityBackendFault) {
+                Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'identity-healthy')
+                Set-LabPathFault 2
+                $failed = Send-ScenarioCall 'B' 'demo-chat' 'pinned-unavailable'
+                if ($failed.status -lt 400) { throw 'B must fail explicitly when its only eligible backend is down.' }
+                Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'A-isolated')
+                Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'A-isolated')
+            } else {
+                for ($i=0; $i -lt 5; $i++) {
+                    foreach ($team in @('A','B')) { Assert-Completion (Send-ScenarioCall $team 'demo-chat' 'identity-healthy') }
+                }
+            }
+        }
         failover {
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'primary')
             if ($IncludeAlternateAlias) { Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'secondary') }
@@ -204,6 +223,7 @@ try {
         conservativeTokenCostEstimateUsd=$estimate; requestCeiling=$requests
         minimumInterRequestSpacingSeconds=$delaySeconds
         workshopRouting=[bool]$WorkshopRouting
+        identityBackendFault=[bool]$IdentityBackendFault
         restorationFailures=@($restorationFailures); results=@($results.ToArray())
     } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $resultPath
     Write-Host "HTTP observations saved: $resultPath. Not a native gateway proof until verify-results.ps1 succeeds."

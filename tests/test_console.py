@@ -93,6 +93,19 @@ class ConsoleTests(unittest.TestCase):
             self.console.lock.release()
             self.assertEqual(self.console.start("baseline")[0], 429)
 
+    def test_identity_routing_uses_same_lock_stop_and_never_invents_backend(self):
+        with patch.object(console_module.threading, "Thread") as thread:
+            code, result = self.console.start("identity-routing")
+            self.assertEqual(code, 202)
+            thread.assert_called_once()
+            job = self.console.snapshot()["jobs"][-1]
+            self.assertEqual(job["scenario"], "identity-routing")
+            self.assertEqual(job["native"], [])
+            self.assertEqual(self.console.start("baseline")[0], 409)
+            self.assertEqual(self.console.stop(result["id"])[0], 202)
+            self.assertTrue((self.console.data / result["id"] / "stop.requested").exists())
+            self.console.lock.release()
+
     def test_failed_worker_repairs_baseline_and_releases_lock(self):
         self.console.lock.acquire()
         job = {"id": "test-run", "scenario": "baseline", "restored": False, "error": None}

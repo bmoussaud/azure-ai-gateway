@@ -1,8 +1,10 @@
 # Démo Azure AI Gateway
 
-Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans service APIM classique ni policies XML. Deux modèles Azure réels derrière des alias stables, deux identités Entra A/B, routage pondéré 80/20, failover, limites de tokens et de coût, télémétrie native et Azure Monitor Workbook.
+Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans service APIM classique ni policies XML. Deux modèles Azure réels derrière des alias stables, deux identités Entra A/B, routage pondéré 80/20 ou conditionnel par identité, failover, limites de tokens et de coût, télémétrie native et Azure Monitor Workbook.
 
 **État : déployé et vérifié dans Azure : baseline A/B, routage 40/50–10/50, failover/récupération et limites de tokens minute/heure.** La limite de coût reste bloquée par le signal natif de tarification incomplète ; elle n'est pas certifiée. Pour une nouvelle cible, aucune région, capacité ou disponibilité de modèle n'est présumée.
+
+Le scénario **Identité de l’appelant · B → Backend 2** est aussi déployé et prouvé par HTTPS et traces natives : A 5/5 sur Backend 1, B 5/5 sur Backend 2. Backend 2 indisponible : B échoue sans bascule, A continue. La condition CEL utilise l'identité Entra validée, pas un header libre ; elle s'applique à `demo-chat`, pas à toutes les routes autorisées.
 
 Application Insights est activé sur le composant existant et lié au DCR natif reconnu par le portail. Une nouvelle baseline A/B a été vérifiée dans ses logs et traces natifs ; l'affichage visuel de la bannière du portail n'a pas été observé.
 

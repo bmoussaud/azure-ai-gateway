@@ -2,9 +2,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit','access-isolation')][string]$Scenario,
+    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit','access-isolation')][string]$Scenario,
     [ValidateRange(50,200)][int]$Samples = 100,
-    [string]$BaselineEvidencePath
+    [string]$BaselineEvidencePath,
+    [switch]$IdentityBackendFault
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -114,6 +115,7 @@ print('DEMO_TOKENS_BEGIN'+json.dumps(tokens)+'DEMO_TOKENS_END',flush=True)
         return
     }
     $run=@{ConfigPath=$ConfigPath;Scenario=$Scenario;Samples=$Samples}
+    if ($IdentityBackendFault) { $run.IdentityBackendFault=$true }
     if($BaselineEvidencePath){$run.BaselineEvidencePath=$BaselineEvidencePath}
     & (Join-Path $PSScriptRoot 'run-scenario.ps1') @run
 } finally {

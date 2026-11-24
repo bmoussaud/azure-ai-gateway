@@ -57,6 +57,14 @@ if ($run.scenario -eq 'weighted-routing') {
         Write-Host "Observed native primary distribution: $primaryCount/$n; 80/20 tolerance +/- $tolerance."
     }
 }
+if ($run.scenario -eq 'identity-routing') {
+    Assert-DemoIdentityRouting $run $rows
+    foreach ($team in @('A','B')) {
+        $traces = @($run.results | Where-Object team -CEQ $team | ForEach-Object traceId)
+        $backends = @($rows | Where-Object TraceId -CIn $traces | Group-Object Backend | ForEach-Object { "$($_.Name)=$($_.Count)" })
+        Write-Host "Native identity routing $team : $($backends -join ', ')."
+    }
+}
 $evidencePath = [IO.Path]::ChangeExtension($ResultsPath, 'verified.json')
 @{ runId=$run.runId; scenario=$run.scenario; gatewayId=$state.gatewayId; verifiedAt=[DateTimeOffset]::UtcNow.ToString('o')
     source='Native OTelSpans and OTelLogs; not client telemetry'; rows=$rows } |

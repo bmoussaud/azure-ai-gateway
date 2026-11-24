@@ -14,7 +14,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent.parent
-SCENARIOS = frozenset(("baseline", "weighted-routing", "failover", "token-rate", "token-quota", "reset"))
+SCENARIOS = frozenset(("baseline", "weighted-routing", "failover", "identity-routing", "token-rate", "token-quota", "reset"))
 
 
 def complete_records(path):

@@ -1,7 +1,7 @@
 #requires -Version 7.4
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','reset')][string]$Scenario,
+    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','reset')][string]$Scenario,
     [Parameter(Mandatory)][string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
