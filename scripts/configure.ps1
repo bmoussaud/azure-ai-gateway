@@ -8,5 +8,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Demo.psm1') -Force
 $config = Read-DemoConfig $ConfigPath
 $null = Get-DemoState $config
-Set-DemoProfile $config $Profile
+Get-DemoState $config | Out-Null
+$alias = Assert-DemoFixedScenario $config $Profile
+Write-Host "Fixed model $alias verified. No configuration was changed."
 Write-Host "Profile $Profile persisted and read back. Counter reset is NOT implied."

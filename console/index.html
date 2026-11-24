@@ -137,9 +137,9 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <section class="card" aria-labelledby="scenarios"><h2 id="scenarios">Lancer un scénario</h2>
 <label for="scenario">Scénario à lancer</label>
 <div class="controls">
-<select id="scenario" disabled><option value="baseline">Tester A et B</option><option value="weighted-routing">Répartir le trafic 80/20</option><option value="identity-routing">Identité de l’appelant · B → Backend 2</option><option value="failover">Simuler une panne</option><option value="token-rate">Tester la limite par minute</option><option value="token-quota">Tester le quota horaire</option><option value="reset">Rétablir le profil initial</option><option disabled>Budget monétaire indisponible · tarifs incomplets</option></select>
+<select id="scenario" disabled><option value="baseline">Tester A et B · demo-chat</option><option value="weighted-routing">Routage 80/20 · scenario-weighted-80-20</option><option value="identity-routing">Identité · scenario-identity</option><option value="failover">Bascule · scenario-failover</option><option value="token-rate">Limite minute · scenario-token-rate</option><option value="token-quota">Quota horaire · scenario-token-quota</option><option value="reset">Vérifier les modèles fixes</option><option disabled>Budget monétaire indisponible · tarifs incomplets</option></select>
 <button disabled id="start" class="primary">Start</button><button disabled id="stop">Stop</button>
-</div><p class="muted"><small>Start lance le scénario choisi. Stop laisse finir l’appel en cours et rétablit le profil initial. Routage 80/20 : 10 appels, avec au maximum 2 s de pause entre deux appels, hors temps de réponse Azure. La répartition observée peut varier.</small></p>
+</div><p class="muted"><small>Chaque scénario appelle son propre modèle, configuré une fois au déploiement. Aucun routage ni quota n’est réécrit. Stop laisse finir l’appel en cours ; les compteurs Azure persistent jusqu’à leur renouvellement naturel. Au plus 10 appels et 2 s de pause intentionnelle, hors latence Azure.</small></p>
 <label for="history">Exécution affichée </label><select id="history"><option>Aucune exécution</option></select>
 </section>
 <section id="gateway-viz" class="gateway-viz" aria-labelledby="viz-title">
@@ -157,7 +157,7 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <g id="viz-route-layer"></g><g id="viz-proof-layer"></g><g id="viz-call-layer"></g>
 <circle id="viz-packet-A" class="viz-packet" r="9" cx="190" cy="105" hidden></circle>
 <circle id="viz-packet-B" class="viz-packet team-b" r="9" cx="190" cy="235" hidden></circle>
-<g id="viz-gateway-node"><rect class="viz-gateway" x="350" y="90" width="300" height="160" rx="4"></rect><text class="viz-title" x="378" y="126">Azure AI Gateway</text><text class="viz-label" x="378" y="154">Alias présenté : demo-chat</text><text id="viz-gateway-state" class="viz-small" x="378" y="181">Configuration de référence</text><text id="viz-gateway-policy" class="viz-small" x="378" y="208">Routage et gouvernance</text></g>
+<g id="viz-gateway-node"><rect class="viz-gateway" x="350" y="90" width="300" height="160" rx="4"></rect><text class="viz-title" x="378" y="126">Azure AI Gateway</text><text id="viz-alias" class="viz-small" x="366" y="154">Modèle : en attente</text><text id="viz-gateway-state" class="viz-small" x="378" y="181">Aucun scénario affiché</text><text id="viz-gateway-policy" class="viz-small" x="378" y="208"></text></g>
 <g id="viz-backend-1-node"><g id="viz-identity-lock" visibility="hidden" aria-label="Condition CEL : identité, B exclue"><rect x="802" y="27" width="184" height="30" rx="4" fill="var(--cp-accent-soft)" stroke="var(--cp-accent)"></rect><path d="M812 40 v-4 a4 4 0 0 1 8 0 v4 m-9 0 h10 v10 h-10 z" fill="none" stroke="var(--cp-accent)" stroke-width="2"></path><text class="viz-small" x="830" y="46">CEL : identité · B exclue</text></g><rect id="viz-backend-1" class="viz-backend" x="810" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="98">Backend 1</text><text class="viz-label" x="828" y="118">Modèle Foundry</text><text id="viz-backend-1-state" class="viz-backend-state" x="828" y="135">État non vérifié</text></g>
 <g id="viz-backend-2-node"><rect id="viz-backend-2" class="viz-backend" x="810" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="228">Backend 2</text><text class="viz-label" x="828" y="248">Modèle Foundry</text><text id="viz-backend-2-state" class="viz-backend-state" x="828" y="265">État non vérifié</text></g>
 </svg></div>
@@ -179,8 +179,8 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 </main>
 <script>
 let state=null, selected=null, launching=false, awaitingJob=null, stopping=null, feedJob=null, feedCount=0, launchError="", stopError="";
-const labels={configuring:"Préparation",running:"Exécution",complete:"Profil initial rétabli",verified:"Vérifié","awaiting-native":"Attente des traces",stopped:"Arrêté · résultat partiel",failed:"Échec · non certifié"};
-const names={baseline:"Test A et B","weighted-routing":"Routage 80/20","identity-routing":"Identité de l’appelant · B → Backend 2",failover:"Panne et récupération","token-rate":"Limite par minute","token-quota":"Quota horaire",reset:"Retour au profil initial"};
+const labels={configuring:"Préparation",running:"Exécution",complete:"Modèles fixes vérifiés",verified:"Vérifié","awaiting-native":"Attente des traces",stopped:"Arrêté · résultat partiel",failed:"Échec · non certifié"};
+const names={baseline:"Test A et B","weighted-routing":"Routage 80/20","identity-routing":"Identité de l’appelant · B → Backend 2",failover:"Panne permanente simulée et bascule","token-rate":"Limite par minute","token-quota":"Quota horaire",reset:"Vérifier les modèles fixes"};
 const phases={healthy:"Vérifier l’accès au modèle",weighted:"Échantillonner le routage",primary:"Vérifier la route principale",secondary:"Vérifier la route secondaire",failover:"Tester la bascule",excluded:"Tester l’exclusion de la route défaillante","all-down":"Tester l’indisponibilité des deux routes",recovered:"Vérifier le retour de la route principale","recovered-secondary":"Vérifier le retour de la route secondaire","initial-A":"Vérifier l’accès initial de A","initial-B":"Vérifier l’accès initial de B","consume-A":"Consommer l’enveloppe de A","still-rejected":"Vérifier si A reste limitée","B-continues":"Vérifier si B peut continuer","alternate-rejected":"Tester la limite de A sur le second alias","B-alternate":"Tester l’accès de B sur le second alias"};
 const clock=new Intl.DateTimeFormat("fr-FR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
 function describe(e,j){
@@ -188,11 +188,13 @@ function describe(e,j){
   switch(e.kind){
     case "accepted":return "La console a accepté le scénario.";
     case "stop-requested":return "Arrêt demandé. L’opération en cours peut se terminer.";
-    case "stopped":return "Scénario arrêté. Profil initial rétabli, observations conservées.";
+    case "stopped":return "Scénario arrêté. Configuration inchangée, observations conservées ; les compteurs Azure persistent.";
     case "identities":return "La console prépare les identités des équipes A et B.";
     case "checking-limits":return "Lecture des capacités Azure pour espacer les appels.";
-    case "applying-profile":return `Configuration de la passerelle : ${names[j.scenario]}. Écriture dans Azure de la gouvernance de l’espace de travail et de l’alias demo-chat.`;
-    case "profile-applied":return `Azure a relu la configuration « ${names[j.scenario]} » : elle est en place.${j.scenario==="identity-routing"?" C’est une preuve de configuration, pas encore une preuve du backend servi.":""}`;
+    case "model-selected":return `Appel du modèle ${e.config?.routes?.[0]?.alias||j.alias}, configuré ainsi : ${names[j.scenario]}. Lecture seule ; aucune écriture dans Azure.`;
+    case "model-verified":return `Le modèle fixe ${e.alias} correspond à sa définition déployée. Le backend réellement servi reste à confirmer par les traces.`;
+    case "checking-models":return "Vérification en lecture seule des modèles fixes, sans effacer les compteurs.";
+    case "configuration-unchanged":return "Configuration inchangée : demo-chat a été relu avec le même ETag. Aucun modèle n’a été reconfiguré.";
     case "quota-window":return `Attente de la prochaine fenêtre de quota (${e.seconds} s au départ).`;
     case "pacing":return `Pause avant l’appel de l’équipe ${e.team} pour respecter la cadence Azure (${e.seconds} s au départ).`;
     case "sending":return `${call} : envoi vers la passerelle.${phases[e.phase]?" "+phases[e.phase]+".":""}`;
@@ -210,7 +212,7 @@ function describe(e,j){
     case "awaiting-traces":return "Appels terminés. Attente des traces d’Application Insights.";
     case "traces":return `Application Insights : ${e.count} trace(s) reçue(s) sur ${e.total}.`;
     case "verifying":return "Comparaison des traces Azure avec les résultats attendus.";
-    case "verified":return j.scenario==="identity-routing"?"Preuve native : A → Backend 1 (5/5), B → Backend 2 (5/5). Aucun appel B sur Backend 1, zéro retry. Profil initial relu.":j.scenario==="weighted-routing"?"Les traces Azure confirment les backends utilisés. Sur 10 appels, la répartition n’est pas forcément 8/2.":"Scénario vérifié : les traces Azure confirment les résultats.";
+    case "verified":return j.scenario==="identity-routing"?"Preuve native : A → Backend 1 (5/5), B → Backend 2 (5/5). Aucun appel B sur Backend 1, zéro retry client. Configuration inchangée.":j.scenario==="weighted-routing"?"Les traces Azure confirment les backends utilisés. Sur 10 appels, la répartition n’est pas forcément 8/2.":"Scénario vérifié : les traces Azure confirment les résultats.";
     case "restored":return "Le profil initial est rétabli.";
     case "repair":return "Tentative de remise en état après interruption.";
     case "failed":return "Le scénario a échoué. Les résultats ne sont pas certifiés.";
@@ -220,11 +222,12 @@ function describe(e,j){
   }
 }
 function text(id,value){const n=el(id);if(n.textContent!==value)n.textContent=value}
-const purposes={baseline:"Vérifier que A et B atteignent le modèle par l’alias demo-chat, sans routage avancé ni limite.","weighted-routing":"Montrer qu’un même alias répartit ses appels entre deux déploiements Azure. Sur 10 appels, un écart à 8/2 est normal.",failover:"Casser volontairement la route du backend 1 puis du 2 : observer la bascule, l’exclusion temporaire (qui vaut aussi pour l’équipe B), l’indisponibilité totale (erreur HTTP attendue), puis la récupération des deux équipes.","token-rate":"L’équipe A consomme vite son enveloppe de la minute et doit recevoir HTTP 429 ; l’équipe B continue avec son propre compteur.","token-quota":"L’équipe A épuise son quota horaire et doit recevoir HTTP 403 ; l’équipe B continue avec son propre compteur."};
+const purposes={baseline:"Vérifier que A et B atteignent le modèle par l’alias demo-chat, sans routage avancé ni limite.","weighted-routing":"Montrer qu’un alias fixe répartit ses appels entre deux déploiements Azure. Sur 10 appels, un écart à 8/2 est normal.",failover:"Appeler un alias dont le premier modèle, demo-unavailable, est volontairement et toujours en erreur 404. Azure bascule vers Backend 2. Les modèles réels des autres alias sont inchangés. Cette panne permanente de laboratoire ne démontre ni récupération ni panne régionale.","token-rate":"A consomme son enveloppe minute et reçoit HTTP 429 ; B continue avec un compteur distinct, propre à cet alias. Aucun compteur n’est remis à zéro au démarrage.","token-quota":"A épuise son quota horaire et reçoit HTTP 403 ; B continue avec un compteur distinct, propre à cet alias. Une nouvelle exécution peut commencer avec A déjà épuisée : attendre le renouvellement naturel."};
 const periods={minute:"minute",hour:"heure",day:"jour"};
 purposes["identity-routing"]="Segmenter deux applications par leur identité authentifiée : A reste sur Backend 1 ; B est épinglée à Backend 2. Cinq appels par identité, alternés, sans header de routage ni retry client.";
 function routeText(r){
   const t=r.targets.slice().sort((a,b)=>a.priority-b.priority||a.backend-b.backend);
+  if(t.some(x=>x.model==="demo-unavailable"))return "demo-unavailable est une mauvaise route permanente, priorité 0. Azure reçoit son erreur 404 puis utilise Backend 2, priorité 1. Aucun changement de route pendant la démo.";
   if(t.some(x=>x.when))return "l’identité Entra B est exclue du backend 1 ; B ne peut sélectionner que le backend 2. A conserve le backend 1 prioritaire. Ce choix n’est pas déduit comme backend servi avant les traces.";
   if(t.every(x=>x.priority===t[0].priority)){const total=t.reduce((n,x)=>n+x.weight,0)||1;return `tirage pondéré à chaque appel : ${t.map(x=>`backend ${x.backend} ${Math.round(100*x.weight/total)} %`).join(", ")}.`}
   return `backend ${t[0].backend} en premier choix (priorité ${t[0].priority}) ; ${t.slice(1).map(x=>`backend ${x.backend} en second rang (priorité ${x.priority})`).join(", ")}.`;
@@ -238,7 +241,7 @@ function failoverText(c){
 function policyShort(p){const per=periods[p.period]||p.period;return p.type==="tokenLimit"?`${p.count} tokens par ${per}`:p.type==="costLimit"?`${p.amount} USD par ${per}`:p.type}
 function policyText(p){
   const who=p.counterKey?.length===1&&p.counterKey[0]==="identity"?"pour chaque identité appelante (A et B ont chacune leur compteur)":`compteur : ${(p.counterKey||[]).join(", ")}`;
-  const where=p.scope==="workspace"?", sur tout l’espace de travail de la passerelle":"";
+  const where=p.scope==="workspace"?", sur tout l’espace de travail de la passerelle":", uniquement sur cet alias ; les autres scénarios ont des compteurs indépendants";
   const extra=p.type==="tokenLimit"?" Un appel déjà accepté peut dépasser le seuil ; les suivants sont refusés.":p.overrides?` ${p.overrides} exception(s) ciblée(s).`:"";
   return `${policyShort(p)} ${who}${where}.${extra}`;
 }
@@ -252,21 +255,11 @@ function configLines(c){
   const condition=c.routes.flatMap(r=>r.targets).find(t=>t.when)?.when;
   return [...c.routes.map(r=>[r.alias,routeText(r)]),...(condition?[["Condition CEL",condition],["Traduction","Backend 1 est éligible sauf si l’identité validée correspond à B. Backend 2 n’a aucune condition. Azure évalue CEL avant les priorités, sur le jeton Entra validé : aucun header libre n’est utilisé."],["Isolement","B est épinglée à Backend 2. S’il tombe, B échoue explicitement, sans repli vers Backend 1. Ce n’est pas une garantie de disponibilité."],["Preuve","Le statut HTTP arrive d’abord ; seuls l’oid et le backend dans les traces Azure, joints par trace ID, confirment le résultat réel."]]:[]),["Bascule",failoverText(c)],["Gouvernance",c.policies.length?c.policies.map(policyText).join(" "):"aucune limite de tokens ni de coût."]];
 }
-function sameRoutes(a,b){const key=c=>c.routes.map(r=>r.alias+":"+r.targets.map(t=>`${t.backend}/${t.priority}/${t.weight}/${t.when||""}`).join(",")).join("|");return key(a)===key(b)}
 function explain(e,j){
   const config=shape(e.config);
-  if(e.kind==="applying-profile")return [...(purposes[j.scenario]?[["But",purposes[j.scenario]]]:[]),...(config?[["Principe","les applications appellent un alias stable ; la passerelle choisit le backend réel. Backends 1 et 2 : même modèle, deux ressources Foundry distinctes."],...configLines(config)]:[])];
-  if(e.kind!=="restoring")return [];
-  if(!config)return [["Action","réparation des routes éventuellement modifiées par une panne simulée, puis retour au profil initial : chaque alias revient à son premier choix, sans bascule ni limite."],["Compteurs","les tokens déjà consommés et les exclusions en cours ne sont pas effacés ; ils expirent d’eux-mêmes."]];
-  const prev=shape(j.activity.find(x=>x.kind==="applying-profile"&&x.config)?.config), changes=[];
-  if(e.repairs)changes.push(`contrôle de l’adresse réelle des ${e.repairs} backend(s) touché(s) par la panne simulée, réécrite si nécessaire`);
-  if(prev?.policies.length)changes.push(`retrait de ${prev.policies.map(policyShort).join(", ")}`);
-  if(prev&&(prev.maxRetryAttempts||prev.failures.length))changes.push("retrait des règles de bascule et d’exclusion");
-  if(prev&&!sameRoutes(prev,config))changes.push("retour au routage initial, un premier choix par alias");
-  const lines=[["Pourquoi","laisser une passerelle neutre pour le scénario suivant, même après Stop ou erreur."],["Changements",changes.length?changes.join(" ; ")+".":prev?"aucun : ce scénario utilise déjà le profil initial ; Azure le vérifie sans le réécrire.":"rétablissement complet du profil initial."],...configLines(config)];
-  if(prev?.policies.length)lines.push(["Compteurs","les tokens déjà consommés ne sont pas remis à zéro ; ils se renouvellent à la fin de leur période."]);
-  if(prev?.failures.length)lines.push(["Exclusions","une exclusion déjà active n’est pas annulée ; elle expire d’elle-même."]);
-  return lines;
+  if(e.kind==="model-selected")return [...(purposes[j.scenario]?[["But",purposes[j.scenario]]]:[]),...(config?[["Principe","seul le champ model envoyé par l’application change entre les scénarios. Les alias et leurs stratégies restent fixes dans Azure."],...configLines(config)]:[])];
+  if(e.kind==="configuration-unchanged")return [["Lecture seule","aucune stratégie ni route n’a été modifiée. Les jetons consommés persistent ; Stop et une nouvelle exécution ne remettent pas les compteurs Azure à zéro."]];
+  return [];
 }
 function details(list,lines){
   list.replaceChildren();
@@ -280,13 +273,13 @@ function showActivity(job){
   text("live-title",job&&!awaiting?`Fil d’exécution · ${names[job.scenario]}`:"Fil d’exécution");
   text("action",awaiting?"Demande de lancement en cours…":launchError?"Lancement non confirmé. Vérifiez l’historique avant de réessayer.":job?.status==="failed"&&job.finishedAt?"Échec du scénario · résultats non certifiés.":last?describe(last,job):job?(labels[job.status]||"Préparation"):"Choisissez un scénario pour suivre ses actions ici.");
   const count=job?.requests.length||0;
-  const target=({baseline:2,"weighted-routing":10,"identity-routing":10,failover:6})[job?.scenario];
-  text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 12 au maximum`);
-  text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · ${job.native.length}/${count} traces Azure · profil initial ${job.restored?"rétabli":"non encore confirmé"}.`);
+  const target=({baseline:2,"weighted-routing":10,"identity-routing":10,failover:4})[job?.scenario];
+  text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 10 au maximum`);
+  text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · modèle ${job.alias||"en cours de lecture"} · ${job.native.length}/${count} traces Azure · aucune écriture de configuration.`);
   const key=awaiting||!job||!last||launchError||(job.status==="failed"&&job.finishedAt)?"":`${job.id}:${events.length}`;
   if(key!==actionKey){
     actionKey=key;
-    const origin={"profile-applied":"applying-profile","profile-restored":"restoring"}[last?.kind], source=origin?events.findLast(x=>x.kind===origin):last;
+    const origin={"model-verified":"model-selected"}[last?.kind], source=origin?events.findLast(x=>x.kind===origin):last;
     details(el("action-details"),key&&source?explain(source,job):[]);
   }
   const feed=el("feed"), id=awaiting?null:job?.id;
@@ -300,17 +293,35 @@ function showActivity(job){
   }
   feedCount=events.length;
 }
-const baselineVizConfig={profile:"baseline",routes:[{alias:"demo-chat",targets:[{backend:1,priority:0,weight:1},{backend:2,priority:1,weight:1}]}],maxRetryAttempts:0,failures:[],policies:[]};
+const emptyVizConfig={routes:[],maxRetryAttempts:0,failures:[],policies:[]};
 const replaySteps={
-  baseline:[["configure","Profil initial"],["traffic","Appels A et B"],["evidence","Traces Azure"],["restore","Profil rétabli"]],
-  "weighted-routing":[["configure","Pondération 80/20"],["traffic","10 appels"],["evidence","Backends tracés"],["restore","Profil rétabli"]],
-  "identity-routing":[["configure","Condition d’identité"],["traffic","5 A + 5 B"],["evidence","Identités et backends tracés"],["restore","Profil rétabli"]],
-  failover:[["primary","Route principale"],["fault1","Panne backend 1"],["retry","Bascule"],["excluded","Exclusion pour B"],["fault2","Panne backend 2"],["allDown","Erreur attendue"],["repair","Réparation"],["recovery","Récupération"],["evidence","Traces Azure"],["restore","Profil rétabli"]],
-  "token-rate":[["configure","Limite par minute"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Profil rétabli"]],
-  "token-quota":[["configure","Quota horaire"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Profil rétabli"]],
-  reset:[["configure","Profil initial"],["restore","Profil relu"]]
+  baseline:[["configure","Modèle de référence"],["traffic","Appels A et B"],["evidence","Traces Azure"],["restore","Configuration inchangée"]],
+  "weighted-routing":[["configure","Pondération fixe 80/20"],["traffic","10 appels"],["evidence","Backends tracés"],["restore","Configuration inchangée"]],
+  "identity-routing":[["configure","Condition d’identité fixe"],["traffic","5 A + 5 B"],["evidence","Identités et backends tracés"],["restore","Configuration inchangée"]],
+  failover:[["configure","Modèle panne fixe"],["retry","4 bascules natives"],["evidence","Traces Azure"],["restore","Configuration inchangée"]],
+  "token-rate":[["configure","Limite minute fixe"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Configuration inchangée"]],
+  "token-quota":[["configure","Quota horaire fixe"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Configuration inchangée"]],
+  reset:[["configure","Modèles fixes"],["restore","Définitions relues"]]
 };
-let replayState=null,replayTimer=null,vizRouteKey="",vizProofKey="",vizMeterKey="";
+let replayState=null,replayTimer=null,vizRouteKey="",vizProofKey="",vizMeterKey="",vizJobId=null;
+function resetDiagram(){
+  clearTimeout(replayTimer);replayTimer=null;replayState=null;
+  for(const id of ["viz-route-layer","viz-proof-layer","viz-call-layer","viz-meters","viz-steps"])clear(id);
+  vizRouteKey=vizProofKey=vizMeterKey="";
+  el("viz-identity-lock").setAttribute("visibility","hidden");
+  el("viz-replay-label").hidden=true;
+  for(const team of ["A","B"]){el(`viz-packet-${team}`).hidden=true;el(`viz-wire-${team}`).setAttribute("visibility","hidden")}
+  for(const backend of [1,2]){
+    el(`viz-backend-${backend}`).classList.remove("is-down");
+    el(`viz-backend-${backend}-state`).classList.remove("is-confirmed","is-down");
+    text(`viz-backend-${backend}-state`,"État non vérifié");
+  }
+  text("viz-alias","Modèle : en attente");
+  text("viz-gateway-state","Nouveau scénario · aucune preuve précédente");
+  text("viz-gateway-policy","");
+  text("viz-caption","Aucun appel ni backend confirmé pour ce scénario.");
+  text("viz-quota-note","");
+}
 function svg(tag,attrs={},label){
   const n=document.createElementNS("http://www.w3.org/2000/svg",tag);
   for(const [key,value] of Object.entries(attrs))n.setAttribute(key,String(value));
@@ -324,8 +335,8 @@ function replayElapsed(now=performance.now()){
 }
 function stepForEvent(e){
   if(!e)return null;
-  if(["applying-profile","profile-applied"].includes(e.kind))return "configure";
-  if(["restoring","profile-restored","restored"].includes(e.kind))return "restore";
+  if(["model-selected","model-verified"].includes(e.kind))return "configure";
+  if(e.kind==="configuration-unchanged")return "restore";
   if(["awaiting-traces","traces","verifying","verified"].includes(e.kind))return "evidence";
   if(e.kind==="injecting")return Number(e.backend)===1?"fault1":"fault2";
   if(e.kind==="fault-propagation")return Number(e.backend)===1?"fault1":"fault2";
@@ -333,7 +344,7 @@ function stepForEvent(e){
   if(e.kind==="recovery-window")return "recovery";
   if(["sending","responded"].includes(e.kind)){
     if(e.phase==="primary"||e.phase==="healthy"||e.phase==="initial-A"||e.phase==="initial-B")return "primary";
-    if(e.phase==="failover")return "retry";
+    if(e.phase==="permanent-failover")return "retry";
     if(e.phase==="excluded")return "excluded";
     if(e.phase==="all-down")return "allDown";
     if(e.phase==="recovered"||e.phase==="recovered-secondary")return "recovery";
@@ -344,6 +355,8 @@ function stepForEvent(e){
   return null;
 }
 function renderViz(job){
+  if(vizJobId!==(job?.id||null)){resetDiagram();vizJobId=job?.id||null}
+  if(!job){resetDiagram();return}
   const replaying=Boolean(replayState&&job&&replayState.jobId===job.id);
   const mobile=window.matchMedia("(max-width:600px)").matches;
   const topology=el("topology");
@@ -361,10 +374,12 @@ function renderViz(job){
   const requestIds=new Set(requests.map(r=>r.traceId));
   const native=(job?.native||[]).filter(r=>requestIds.has(r.TraceId));
   const configEvent=replaying
-    ?activity.findLast(e=>["applying-profile","restoring"].includes(e.kind)&&e.config)
-    :activity.findLast(e=>e.kind==="applying-profile"&&e.config)||activity.findLast(e=>e.kind==="restoring"&&e.config);
-  const config=shape(configEvent?.config)||baselineVizConfig;
+    ?activity.findLast(e=>e.kind==="model-selected"&&e.config)
+    :activity.findLast(e=>e.kind==="model-selected"&&e.config);
+  const config=shape(configEvent?.config)||emptyVizConfig;
   const faulted=new Set();
+  if(config.routes.some(r=>r.targets.some(t=>t.model==="demo-unavailable")))faulted.add(1);
+  for(const team of ["A","B"])el(`viz-wire-${team}`).setAttribute("visibility",configEvent?"visible":"hidden");
   for(const event of activity){
     if(event.kind==="injecting"||event.kind==="fault-propagation")faulted.add(Number(event.backend));
     if(event.kind==="repairing-routes"||event.kind==="repair"||event.kind==="profile-restored"||event.kind==="restored")faulted.clear();
@@ -375,7 +390,8 @@ function renderViz(job){
     label.classList.remove("is-confirmed");
     text(`viz-backend-${backend}-state`,down?"Panne simulée · en attente":"État non vérifié");
   }
-  const route= config.routes.find(r=>r.alias==="demo-chat");
+  const route=config.routes[0];
+  text("viz-alias",`Modèle : ${route?.alias||"en attente"}`);
   const routeLayer=el("viz-route-layer"),proofLayer=el("viz-proof-layer"),callLayer=el("viz-call-layer");
   clear("viz-call-layer");
   const targets=(route?.targets||[]).slice().sort((a,b)=>a.priority-b.priority||a.backend-b.backend);
@@ -406,7 +422,7 @@ function renderViz(job){
       if(!d)continue;
       const width=weighted?2+7*(Number(target.weight)||0)/weightTotal:(target.priority===targets[0]?.priority?7:3);
       routeLayer.append(svg("path",{d,class:`viz-route${target.priority===targets[0]?.priority?"":" secondary"}`,"stroke-width":width}));
-      const value=identityRouting?(backend===1?"A · priorité 0":"B · seul éligible"):weighted?`${Math.round(100*(Number(target.weight)||0)/weightTotal)} %`:`Priorité ${target.priority}`;
+      const value=target.model==="demo-unavailable"?"Panne permanente · 404":identityRouting?(backend===1?"A · priorité 0":"B · seul éligible"):weighted?`${Math.round(100*(Number(target.weight)||0)/weightTotal)} %`:`Priorité ${target.priority}`;
       routeLayer.append(svg("text",{x:point.x,y:point.y,class:"viz-small","text-anchor":"middle"},value));
     }
   }
@@ -448,19 +464,16 @@ function renderViz(job){
       dot.append(title);callLayer.append(dot);
     });
   }
-  const latest=activity.at(-1),restored=activity.some(e=>e.kind==="profile-restored"||e.kind==="restored");
-  let gatewayState=configEvent?"Écriture du profil dans Azure":"Profil de référence · non vérifié";
-  if(activity.some(e=>e.kind==="profile-applied"))gatewayState="Configuration relue par Azure";
-  if(activity.some(e=>e.kind==="restoring"))gatewayState="Restauration du profil initial en cours";
-  if(latest?.kind==="profile-restored"||latest?.kind==="restored")gatewayState="Profil initial relu par Azure";
-  if(job&&restored&&["verified","complete","stopped"].includes(job.status))gatewayState="Profil initial rétabli · configuration du scénario affichée";
-  const mobileState=gatewayState.startsWith("Profil initial rétabli")?"Profil initial rétabli":gatewayState;
+  const latest=activity.at(-1),restored=activity.some(e=>e.kind==="configuration-unchanged");
+  let gatewayState=configEvent?"Modèle fixe · lecture seule":"Lecture du modèle en cours";
+  if(activity.some(e=>e.kind==="model-verified"))gatewayState="Configuration fixe vérifiée";
+  const mobileState=gatewayState;
   text("viz-gateway-state",mobile?mobileState:gatewayState);
   const policy=config.policies.map(policyShort).join(" · ")||"Aucun quota configuré";
   const failures=config.failures||[],exclude=[...new Set(failures.map(f=>Number(f.excludeSeconds)).filter(Boolean))];
   const retry=config.maxRetryAttempts?`${config.maxRetryAttempts} nouvelle tentative · exclusion ${exclude.join("/")} s`:"Aucune règle de bascule";
   text("viz-gateway-policy",identityRouting?"Identité Entra validée → CEL → priorité":config.policies.length?policy:retry);
-  const desc=`Applications A et B appellent demo-chat. ${targets.map(t=>`Backend ${t.backend}, ${weighted?`${Math.round(100*(Number(t.weight)||0)/weightTotal)} pour cent du poids`: `priorité ${t.priority}`}`).join("; ")||"aucune route décrite"}. ${native.length} preuve(s) native(s) reçue(s).`;
+  const desc=`Applications A et B appellent ${route?.alias||"un modèle non encore lu"}. ${targets.map(t=>`Backend ${t.backend}, ${weighted?`${Math.round(100*(Number(t.weight)||0)/weightTotal)} pour cent du poids`: `priorité ${t.priority}`}`).join("; ")||"aucune route décrite"}. ${native.length} preuve(s) native(s) reçue(s).`;
   el("viz-svg-desc").textContent=desc;
   const stageList=el("viz-steps");clear("viz-steps");
   const stages=replaySteps[job?.scenario]||replaySteps.baseline;
@@ -539,7 +552,7 @@ function render(){
   const history=el("history");history.replaceChildren();
   for(const j of jobs){const o=node("option",`${names[j.scenario]} · ${clock.format(new Date(j.startedAt*1000))} · ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
   if(!jobs.length)history.append(node("option","Aucune exécution"));
-  const job=jobs.find(j=>j.id===selected);
+  const job=launching||awaitingJob?null:jobs.find(j=>j.id===selected);
   if(replayState&&replayState.jobId!==job?.id){clearTimeout(replayTimer);replayTimer=null;replayState=null}
   el("stop").disabled=!state.busy||!job||job.id!==latest?.id||job.scenario==="reset"||!["configuring","running","awaiting-native"].includes(job.status)||job.stopRequested||stopping===job.id;
   el("error").textContent=state.error||launchError||stopError||job?.error||"";
@@ -576,7 +589,7 @@ async function command(path,body){
   return r.json();
 }
 el("start").addEventListener("click",async()=>{
-  launching=true;launchError=stopError="";render();
+  launching=true;selected=null;stopping=null;launchError=stopError="";resetDiagram();vizJobId=null;render();
   try{awaitingJob=(await command("/api/run",{scenario:el("scenario").value})).id}
   catch(e){launchError=e.message;text("error",launchError);text("action","Lancement non confirmé. Vérifiez l’historique avant de réessayer.");}
   finally{launching=false}

@@ -64,29 +64,9 @@ resource logReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')
   }
 }
-resource scenarioRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
-  name: guid(resourceGroup().id, 'console-scenario-operator')
-  properties: {
-    roleName: '${prefix} bounded scenario operator'
-    description: 'Only versioned lab workspace, alias and model mapping changes. No inference or IAM permissions.'
-    type: 'CustomRole'
-    assignableScopes: [resourceGroup().id]
-    permissions: [{
-      actions: [
-        'Microsoft.ApiManagement/aigateways/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/write'
-        'Microsoft.ApiManagement/aigateways/workspaces/aliases/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/aliases/write'
-        'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models/write'
-      ]
-      notActions: []
-      dataActions: []
-      notDataActions: []
-    }]
-  }
+module scenarioRole './console-role.bicep' = {
+  name: 'console-read-only-role'
+  params: { prefix: prefix }
 }
 resource scenarioGrant 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(gateway.id, operator.id, 'scenario-operator')
@@ -94,7 +74,7 @@ resource scenarioGrant 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   properties: {
     principalId: operator.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: scenarioRole.id
+    roleDefinitionId: scenarioRole.outputs.id
   }
 }
 resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {

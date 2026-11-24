@@ -1,4 +1,5 @@
 {
+  "alias": "scenario-identity",
   "backends": [
     {
       "priority": 0,

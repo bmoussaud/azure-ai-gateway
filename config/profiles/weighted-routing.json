@@ -1,4 +1,5 @@
 {
+  "alias": "scenario-weighted-80-20",
   "backends": [{"priority": 0, "weight": 80}, {"priority": 0, "weight": 20}],
   "maxRetryAttempts": 0,
   "failures": [],

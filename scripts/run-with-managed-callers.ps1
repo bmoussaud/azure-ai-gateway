@@ -3,7 +3,7 @@
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
     [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit','access-isolation')][string]$Scenario,
-    [ValidateRange(50,200)][int]$Samples = 100,
+    [ValidateRange(1,10)][int]$Samples = 10,
     [string]$BaselineEvidencePath,
     [switch]$IdentityBackendFault
 )

@@ -14,6 +14,22 @@ SPEC.loader.exec_module(console_module)
 
 
 class ConsoleTests(unittest.TestCase):
+    def test_native_join_waits_for_logs_and_policy_not_just_server_span_count(self):
+        requests = [{"traceId": "one", "status": 200, "completion": True}]
+        rows = [{"TraceId": "one", "Identity": "native-oid", "HttpStatus": 200,
+                 "Backend": "backend-1/demo-model", "Attempts": 1}]
+        self.assertFalse(console_module.native_join_complete(requests, rows, "identity-routing"))
+        rows[0]["Alias"] = "scenario-identity"
+        self.assertTrue(console_module.native_join_complete(requests, rows, "identity-routing"))
+        self.assertFalse(console_module.native_join_complete(requests, rows + rows, "identity-routing"))
+        requests[0].update(status=429, completion=False)
+        rows[0]["Alias"] = "scenario-token-rate"
+        self.assertFalse(console_module.native_join_complete(requests, rows, "token-rate"))
+        rows[0]["RejectedPolicy"] = "tokenLimit"
+        self.assertTrue(console_module.native_join_complete(requests, rows, "token-rate"))
+        rows[0]["Alias"] = "wrong-but-present"
+        self.assertTrue(console_module.native_join_complete(requests, rows, "token-rate"))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.console = console_module.Console(self.directory.name, {}, {
@@ -106,9 +122,9 @@ class ConsoleTests(unittest.TestCase):
             self.assertTrue((self.console.data / result["id"] / "stop.requested").exists())
             self.console.lock.release()
 
-    def test_failed_worker_repairs_baseline_and_releases_lock(self):
+    def test_failed_worker_never_reconfigures_gateway_and_releases_lock(self):
         self.console.lock.acquire()
-        job = {"id": "test-run", "scenario": "baseline", "restored": False, "error": None}
+        job = {"id": "test-run", "scenario": "baseline", "restored": True, "error": None}
         with patch.object(console_module, "managed_token", side_effect=ValueError("rejected")), \
                 patch.object(console_module.subprocess, "run") as reset:
             reset.return_value.returncode = 0
@@ -116,10 +132,10 @@ class ConsoleTests(unittest.TestCase):
             self.assertEqual(job["status"], "failed")
             self.assertTrue(job["restored"])
             self.assertFalse(self.console.lock.locked())
-            self.assertIn("reset-demo.ps1", " ".join(reset.call_args.args[0]))
+            reset.assert_not_called()
             self.assertTrue((Path(self.directory.name) / "test-run" / "console-result.json").exists())
 
-    def test_stop_is_scoped_protected_and_idempotent_then_restores(self):
+    def test_stop_is_scoped_protected_and_idempotent_without_reconfiguration(self):
         with patch.object(console_module.threading, "Thread"):
             _, result = self.console.start("weighted-routing")
         job = self.console.jobs[-1]
@@ -138,7 +154,7 @@ class ConsoleTests(unittest.TestCase):
             repair.return_value.returncode = 0
             self.console.run(job)
             token.assert_not_called()
-            repair.assert_called_once()
+            repair.assert_not_called()
         self.assertEqual(job["status"], "stopped")
         self.assertTrue(job["restored"])
         self.assertFalse(self.console.lock.locked())
@@ -151,14 +167,14 @@ class ConsoleTests(unittest.TestCase):
         self.assertFalse(self.console.stop_signal.is_set())
         self.console.lock.release()
 
-    def test_restoration_failure_locks_controls(self):
+    def test_observed_configuration_change_locks_controls_without_repair(self):
         self.console.lock.acquire()
         job = {"id": "test-failure", "scenario": "baseline", "restored": False, "error": None}
         with patch.object(console_module, "managed_token", side_effect=ValueError("rejected")), \
                 patch.object(console_module.subprocess, "run", side_effect=OSError("reset failed")):
             self.console.run(job)
         self.assertFalse(self.console.ready)
-        self.assertIn("RESTORATION FAILED", job["error"])
+        self.assertIn("FIXED CONFIGURATION CHANGED", job["error"])
         self.assertFalse(self.console.lock.locked())
 
     def test_activity_reaches_snapshot_before_http_and_partial_rows_are_not_replayed(self):

@@ -50,14 +50,14 @@ function Wait-ConsoleJob([string]$Id) {
         if ($StopAfterFirstResponse -and $previous -eq 'stopped' -and -not $state.busy) {
             if (-not $stopSent -or -not $state.ready -or -not $job[0].restored -or
                 $job[0].requests.Count -ne 1 -or $job[0].activity[-1].kind -ne 'stopped') {
-                throw 'Expected a partial baseline, restored profile and released controls.'
+                throw 'Expected a partial baseline, unchanged configuration and released controls.'
             }
-            Write-Host "Start/Stop confirmed: $($job[0].requests.Count) of 2 responses retained, baseline restored, ready."
+            Write-Host "Start/Stop confirmed: $($job[0].requests.Count) of 2 responses retained, configuration unchanged, ready."
             return $job[0]
         }
         if ($previous -in @('verified','complete') -and -not $state.busy) {
             if ($StopAfterFirstResponse) { throw 'Baseline completed instead of stopping.' }
-            if (-not $job[0].restored) { throw 'Hosted job did not confirm baseline restoration.' }
+            if (-not $job[0].restored) { throw 'Hosted job did not confirm unchanged configuration.' }
             if ($LiveBaselineOnly -and (-not $inFlight -or $job[0].requests.Count -ne 2 -or
                 @($job[0].activity | Where-Object kind -CEQ 'responded').Count -ne 2 -or
                 $job[0].activity[-1].kind -cne 'verified')) { throw 'Live baseline journal evidence incomplete.' }
@@ -72,7 +72,7 @@ do {
     $state = Read-Console
     if ($state.error) { throw "Console is not ready: $($state.error)" }
     if ($state.ready) { break }
-    if ([DateTimeOffset]::UtcNow -gt $deadline) { throw 'Managed identity/startup reset did not become ready.' }
+    if ([DateTimeOffset]::UtcNow -gt $deadline) { throw 'Managed identity/startup verification did not become ready.' }
     Start-Sleep -Seconds 5
 } while ($true)
 if ($state.busy) { throw 'Another hosted scenario is already running; acceptance will not interfere.' }
@@ -112,21 +112,31 @@ if ($IdentityRoutingOnly) {
     foreach ($team in @('A','B')) {
         $calls = @($j.requests | Where-Object team -CEQ $team)
         $expected = if ($team -ceq 'B') { 'backend-2/demo-model' } else { 'backend-1/demo-model' }
-        if ($calls.Count -ne 5 -or @($calls | Where-Object { $_.status -ne 200 -or $_.alias -cne 'demo-chat' }).Count -or
+        if ($calls.Count -ne 5 -or @($calls | Where-Object { $_.status -ne 200 -or $_.alias -cne 'scenario-identity' }).Count -or
             @($j.native | Where-Object { $_.TraceId -cin $calls.traceId -and $_.Backend -ceq $expected -and $_.Attempts -eq 1 }).Count -ne 5) {
             throw "Identity HTTPS scenario did not prove five $team calls on $expected."
         }
     }
-    Write-Host 'Native identity routing: A -> Backend 1 (5/5), B -> Backend 2 (5/5), no fallback or client retry, baseline restored.'
+    Write-Host 'Native identity routing: A -> Backend 1 (5/5), B -> Backend 2 (5/5), no fallback or client retry, configuration unchanged.'
 }
 if ($LiveBaselineOnly -or $StopAfterFirstResponse -or $WorkshopRoutingOnly -or $IdentityRoutingOnly) {
     $jobs[0] | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
-    if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 2 responses, native evidence and restored gateway.' }
+    if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 2 responses, native evidence and unchanged gateway.' }
     return
 }
-foreach ($scenario in @('failover','token-rate','reset')) {
+foreach ($scenario in @('weighted-routing','failover','token-rate','token-quota','identity-routing','reset')) {
     $run = Invoke-ConsoleAction $scenario
     $jobs.Add((Wait-ConsoleJob $run.id))
+}
+foreach ($job in @($jobs | Where-Object scenario -NE 'reset')) {
+    if ($job.status -cne 'verified' -or -not $job.configurationUnchanged -or
+        $job.requests.Count -gt 10 -or $job.requests.Count -ne $job.native.Count -or
+        $job.minimumSpacingSeconds -gt 2 -or $job.clientRetries -ne 0 -or
+        @($job.requests | Where-Object alias -CNE $job.alias).Count -or
+        @($job.native | Where-Object Alias -CNE $job.alias).Count -or
+        @($job.activity | Where-Object { $_.kind -in @('applying-profile','restoring','injecting','repair') }).Count) {
+        throw 'Fixed scenario acceptance needs its own native alias, no configuration changes and bounded traffic.'
+    }
 }
 $minute = @($jobs | Where-Object scenario -EQ 'token-rate')[0]
 if (@($minute.requests | Where-Object { $_.team -eq 'A' -and $_.status -eq 429 }).Count -lt 1 -or
@@ -137,6 +147,7 @@ if (@($minute.requests | Where-Object { $_.team -eq 'A' -and $_.status -eq 429 }
     url=$Url; verifiedAt=[DateTimeOffset]::UtcNow.ToString('o')
     source='Actual HTTPS scenario API, server A/B managed identities and native telemetry verifier'
     noCsrfStatus=$csrf.StatusCode; overlappingStatus=$overlap.StatusCode
+    configurationMode='fixed-alias'
     jobs=@($jobs.ToArray()); visualBrowserObserved=$false
 } | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
 Write-Host "HTTPS console acceptance verified and saved: $OutputPath"

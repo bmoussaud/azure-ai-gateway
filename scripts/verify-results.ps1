@@ -10,6 +10,15 @@ $run = Get-Content -LiteralPath $ResultsPath -Raw | ConvertFrom-Json -AsHashtabl
 if ($run.gatewayId -ine $state.gatewayId -or $run.outcome -ne 'http-observed-awaiting-native-telemetry') {
     throw 'Only complete HTTP observations from this gateway can be checked.'
 }
+if ($run['configurationMode'] -eq 'fixed-alias') {
+    $definition = Read-DemoProfile $config $run.scenario
+    if (-not $run.configurationUnchanged -or $run.alias -cne $definition.alias -or
+        $run.baselineEtagBefore -cne $run.baselineEtagAfter -or $run.restorationFailures.Count -or
+        $run.results.Count -gt 10 -or $run.minimumInterRequestSpacingSeconds -gt 2 -or
+        $run.clientRetries -ne 0 -or @($run.results | Where-Object alias -CNE $definition.alias).Count) {
+        throw 'Fixed scenario evidence must show only its dedicated alias and unchanged demo-chat.'
+    }
+}
 $query = Get-DemoRequestsQuery $state
 $traceIds = @($run.results | ForEach-Object { if ($_.traceId -cnotmatch '^[a-f0-9]{32}$') { throw 'Invalid trace ID.' }; "'$($_.traceId)'" })
 $query += "`n| where TraceId in ($($traceIds -join ','))"
@@ -25,6 +34,9 @@ foreach ($result in $run.results) {
     if ($row.Identity -ine $identity -or [int]$row.HttpStatus -ne $result.status) {
         throw 'Native identity/status does not match the HTTP observation.'
     }
+    if ($run['configurationMode'] -eq 'fixed-alias' -and $row.Alias -cne $run.alias) {
+        throw 'Native alias does not match the fixed model selected for this scenario.'
+    }
     if ($result.completion -and ($row.StatusCode -eq 'Error' -or $row.Backend -notin @($primary,$secondary))) {
         throw 'Completion has no healthy native serving backend evidence.'
     }
@@ -33,6 +45,11 @@ foreach ($result in $run.results) {
         if ($row.Backend -ine $expectedBackend) { throw 'Baseline did not prove both intended real backends.' }
     }
     if ($run.scenario -eq 'failover') {
+        if ($run['configurationMode'] -eq 'fixed-alias') {
+            if ($row.Backend -cne $secondary -or [int]$row.Attempts -ne 2 -or $result.status -ne 200 -or -not $result.completion) {
+                throw 'Permanent simulated primary fault must show two native sends and a real Backend 2 completion.'
+            }
+        }
         if ($result.phase -in @('primary','recovered') -and $row.Backend -ine $primary) { throw 'Primary selection/recovery not observed.' }
         if ($result.phase -in @('secondary','failover','excluded','recovered-secondary') -and $row.Backend -ine $secondary) { throw 'Secondary selection not observed.' }
         if ($result.phase -eq 'failover' -and [int]$row.Attempts -ne 2) { throw 'Native failover did not show two backend sends.' }
@@ -46,8 +63,8 @@ foreach ($result in $run.results) {
 if ($run.scenario -eq 'weighted-routing') {
     $n = $rows.Count
     $primaryCount = @($rows | Where-Object Backend -IEQ $primary).Count
-    if ($run['workshopRouting']) {
-        if ($n -ne 10 -or $run.minimumInterRequestSpacingSeconds -gt 2 -or
+    if ($run['workshopRouting'] -or $run['configurationMode'] -eq 'fixed-alias') {
+        if ($n -ne $run.requestCeiling -or $n -gt 10 -or $run.minimumInterRequestSpacingSeconds -gt 2 -or
             @($run.results | Where-Object { -not $_.completion -or $_.status -ne 200 }).Count) {
             throw 'Expected 10 completed workshop calls with at most two seconds of intentional spacing.'
         }
@@ -55,6 +72,14 @@ if ($run.scenario -eq 'weighted-routing') {
     } else {
         $tolerance = Assert-DemoWeightedDistribution $primaryCount $n
         Write-Host "Observed native primary distribution: $primaryCount/$n; 80/20 tolerance +/- $tolerance."
+    }
+}
+if ($run['configurationMode'] -eq 'fixed-alias' -and $run.scenario -in @('token-rate','token-quota')) {
+    $status = if ($run.scenario -eq 'token-rate') { 429 } else { 403 }
+    if (-not @($run.results | Where-Object { $_.team -eq 'A' -and $_.status -eq $status }).Count -or
+        @($run.results | Where-Object { $_.team -eq 'B' -and ($_.status -ne 200 -or -not $_.completion) }).Count -or
+        @($run.results | Where-Object team -CEQ 'B').Count -lt 2) {
+        throw 'Alias-local governance must prove A policy rejection while B continues.'
     }
 }
 if ($run.scenario -eq 'identity-routing') {
