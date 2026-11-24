@@ -33,7 +33,7 @@ function Wait-ConsoleJob([string]$Id) {
             $previous = $job[0].status
             Write-Host "$($job[0].scenario): $previous"
         }
-        if ($LiveBaselineOnly -and $state.busy -and $job[0].requests.Count -lt 4 -and
+        if ($LiveBaselineOnly -and $state.busy -and $job[0].requests.Count -lt 2 -and
             @($job[0].activity | Where-Object kind -CEQ 'sending').Count) {
             if (-not $inFlight) { Write-Host 'Observed a live dispatch before all baseline responses arrived.' }
             $inFlight = $true
@@ -49,17 +49,17 @@ function Wait-ConsoleJob([string]$Id) {
         }
         if ($StopAfterFirstResponse -and $previous -eq 'stopped' -and -not $state.busy) {
             if (-not $stopSent -or -not $state.ready -or -not $job[0].restored -or
-                $job[0].requests.Count -notin (1..3) -or $job[0].activity[-1].kind -ne 'stopped') {
+                $job[0].requests.Count -ne 1 -or $job[0].activity[-1].kind -ne 'stopped') {
                 throw 'Expected a partial baseline, restored profile and released controls.'
             }
-            Write-Host "Start/Stop confirmed: $($job[0].requests.Count) of 4 responses retained, baseline restored, ready."
+            Write-Host "Start/Stop confirmed: $($job[0].requests.Count) of 2 responses retained, baseline restored, ready."
             return $job[0]
         }
         if ($previous -in @('verified','complete') -and -not $state.busy) {
             if ($StopAfterFirstResponse) { throw 'Baseline completed instead of stopping.' }
             if (-not $job[0].restored) { throw 'Hosted job did not confirm baseline restoration.' }
-            if ($LiveBaselineOnly -and (-not $inFlight -or $job[0].requests.Count -ne 4 -or
-                @($job[0].activity | Where-Object kind -CEQ 'responded').Count -ne 4 -or
+            if ($LiveBaselineOnly -and (-not $inFlight -or $job[0].requests.Count -ne 2 -or
+                @($job[0].activity | Where-Object kind -CEQ 'responded').Count -ne 2 -or
                 $job[0].activity[-1].kind -cne 'verified')) { throw 'Live baseline journal evidence incomplete.' }
             return $job[0]
         }
@@ -104,7 +104,7 @@ if ($WorkshopRoutingOnly) {
 }
 if ($LiveBaselineOnly -or $StopAfterFirstResponse -or $WorkshopRoutingOnly) {
     $jobs[0] | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
-    if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 4 responses, native evidence and restored gateway.' }
+    if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 2 responses, native evidence and restored gateway.' }
     return
 }
 foreach ($scenario in @('failover','token-rate','reset')) {

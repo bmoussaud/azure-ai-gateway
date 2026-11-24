@@ -90,6 +90,43 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 @media(max-width:600px){.explain li{grid-template-columns:1fr}}
 .feed time,.counter{font-variant-numeric:tabular-nums}.feed time{color:var(--cp-text-muted)}.counter{font-weight:600}
 .status{white-space:normal}.success{color:#16733b}.danger{color:#b42031}html[data-theme="dark"] .success{color:var(--cp-success)}html[data-theme="dark"] .danger{color:var(--cp-danger)}
+.gateway-viz{background:var(--cp-surface);border:1px solid var(--cp-border);padding:20px;margin:24px 0}
+.viz-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.viz-head h2{margin:0}.viz-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.viz-controls button{padding:8px 12px}
+.viz-frame{overflow-x:auto;margin:14px 0 8px}.viz-frame svg{display:block;width:100%;min-width:660px;height:auto}
+.viz-app,.viz-gateway,.viz-backend{fill:var(--cp-surface);stroke:var(--cp-border-strong);stroke-width:2}
+.viz-gateway{fill:var(--cp-accent-soft);stroke:var(--cp-accent)}
+.viz-backend.is-down{fill:color-mix(in srgb,var(--cp-danger) 14%,var(--cp-surface));stroke:var(--cp-danger)}
+.viz-backend-state{fill:var(--cp-text-muted);font:600 11px "Segoe UI",sans-serif}
+.viz-backend-state.is-confirmed{fill:var(--cp-success)}
+.viz-backend-state.is-down{fill:var(--cp-danger)}
+.viz-title{fill:var(--cp-text);font:600 19px "Segoe UI",sans-serif}.viz-label{fill:var(--cp-text-muted);font:14px "Segoe UI",sans-serif}
+.viz-small{fill:var(--cp-text-muted);font:12px "Segoe UI",sans-serif}.viz-wire{fill:none;stroke:var(--cp-border-strong);stroke-width:2}
+.viz-route{fill:none;stroke:var(--cp-accent);stroke-dasharray:7 7;stroke-linecap:round;opacity:.72;animation:viz-route-enter .55s ease-out both}
+.viz-route.secondary{stroke:var(--cp-text-muted);stroke-dasharray:4 7}
+.viz-proof{fill:none;stroke:var(--cp-success);stroke-width:4;stroke-linecap:round;stroke-dasharray:180;stroke-dashoffset:180;opacity:.9;animation:viz-proof-draw .7s ease-out forwards}
+@keyframes viz-route-enter{from{stroke-dashoffset:18;opacity:.08}to{stroke-dashoffset:0;opacity:.72}}
+@keyframes viz-proof-draw{to{stroke-dashoffset:0}}
+.viz-step-list{display:flex;gap:8px;overflow-x:auto;list-style:none;padding:0;margin:12px 0}
+.viz-step-list li{flex:0 0 auto;padding:6px 10px;border:1px solid var(--cp-border);color:var(--cp-text-muted);font-size:13px}
+.viz-step-list li[aria-current="step"]{border-color:var(--cp-accent);color:var(--cp-text);font-weight:600}
+.viz-step-list li[data-state="done"]{color:var(--cp-success);border-color:var(--cp-success)}
+.viz-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--cp-text-muted)}
+.viz-legend span{display:inline-flex;align-items:center;gap:7px}.viz-key{width:24px;border-top:2px dashed var(--cp-accent)}
+.viz-key.proof{border-top-style:solid;border-color:var(--cp-success)}
+.viz-note{margin:10px 0 0;font-size:13px;line-height:1.45}
+.viz-meter-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:12px}
+.viz-meter{min-width:0}.viz-meter-head{display:flex;justify-content:space-between;gap:12px;font-size:13px}
+.viz-meter-track{height:10px;background:var(--cp-surface-soft);margin-top:6px;overflow:hidden}
+.viz-meter-fill{height:100%;background:var(--cp-accent);transition:width .4s ease}
+.viz-packet{fill:var(--cp-accent);stroke:var(--cp-surface);stroke-width:3;transition:cx .75s cubic-bezier(.16,1,.3,1),cy .75s cubic-bezier(.16,1,.3,1),opacity .3s ease}
+.viz-packet.team-b{fill:var(--cp-link)}
+.viz-packet[hidden]{display:none}
+.viz-replay{font-weight:600;color:var(--cp-accent)}.viz-replay[hidden]{display:none}
+.gateway-viz:fullscreen{background:var(--cp-bg);padding:32px;overflow:auto}
+.gateway-viz:fullscreen .viz-frame svg{min-width:0;max-height:62vh}
+@media(max-width:600px){.gateway-viz{padding:14px}.viz-meter-list{grid-template-columns:1fr}.viz-head{align-items:flex-start}.viz-frame{overflow:visible}.viz-frame svg{min-width:0}}
+@media(prefers-reduced-motion:reduce){.viz-route,.viz-proof,.viz-meter-fill,.viz-packet{transition:none!important;animation:none!important;stroke-dashoffset:0!important}}
 </style>
 </head>
 <body>
@@ -104,6 +141,30 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <button disabled id="start" class="primary">Start</button><button disabled id="stop">Stop</button>
 </div><p class="muted"><small>Start lance le scénario choisi. Stop laisse finir l’appel en cours et rétablit le profil initial. Routage 80/20 : 10 appels, avec au maximum 2 s de pause entre deux appels, hors temps de réponse Azure. La répartition observée peut varier.</small></p>
 <label for="history">Exécution affichée </label><select id="history"><option>Aucune exécution</option></select>
+</section>
+<section id="gateway-viz" class="gateway-viz" aria-labelledby="viz-title">
+<div class="viz-head"><h2 id="viz-title">Carte de la passerelle</h2><div class="viz-controls">
+<button id="viz-replay" type="button" disabled>Rejouer</button><label for="viz-speed">Vitesse</label><select id="viz-speed"><option value="1">1×</option><option value="4">4×</option></select>
+<button id="viz-fullscreen" type="button">Plein écran</button>
+</div></div>
+<ol id="viz-steps" class="viz-step-list" aria-label="Étapes du scénario"></ol>
+<div class="viz-frame"><svg id="topology" viewBox="0 0 1000 330" role="img" aria-labelledby="viz-svg-title viz-svg-desc">
+<title id="viz-svg-title">Flux des équipes A et B dans Azure AI Gateway</title>
+<desc id="viz-svg-desc">Les équipes appellent la passerelle via demo-chat. Les routes configurées sont en pointillés; seuls les traits pleins verts sont confirmés par des traces Azure.</desc>
+<defs><marker id="viz-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path></marker></defs>
+<g id="viz-input-a"><path id="viz-wire-A" class="viz-wire" d="M190 105 C245 105 285 145 350 150" marker-end="url(#viz-arrow)"></path><rect class="viz-app" x="20" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="100">Application A</text><text class="viz-label" x="38" y="124">Identité dédiée</text></g>
+<g id="viz-input-b"><path id="viz-wire-B" class="viz-wire" d="M190 235 C245 235 285 195 350 190" marker-end="url(#viz-arrow)"></path><rect class="viz-app" x="20" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="230">Application B</text><text class="viz-label" x="38" y="254">Identité dédiée</text></g>
+<g id="viz-route-layer"></g><g id="viz-proof-layer"></g><g id="viz-call-layer"></g>
+<circle id="viz-packet-A" class="viz-packet" r="9" cx="190" cy="105" hidden></circle>
+<circle id="viz-packet-B" class="viz-packet team-b" r="9" cx="190" cy="235" hidden></circle>
+<g id="viz-gateway-node"><rect class="viz-gateway" x="350" y="90" width="300" height="160" rx="4"></rect><text class="viz-title" x="378" y="126">Azure AI Gateway</text><text class="viz-label" x="378" y="154">Alias présenté : demo-chat</text><text id="viz-gateway-state" class="viz-small" x="378" y="181">Configuration de référence</text><text id="viz-gateway-policy" class="viz-small" x="378" y="208">Routage et gouvernance</text></g>
+<g id="viz-backend-1-node"><rect id="viz-backend-1" class="viz-backend" x="810" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="98">Backend 1</text><text class="viz-label" x="828" y="118">Modèle Foundry</text><text id="viz-backend-1-state" class="viz-backend-state" x="828" y="135">État non vérifié</text></g>
+<g id="viz-backend-2-node"><rect id="viz-backend-2" class="viz-backend" x="810" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="228">Backend 2</text><text class="viz-label" x="828" y="248">Modèle Foundry</text><text id="viz-backend-2-state" class="viz-backend-state" x="828" y="265">État non vérifié</text></g>
+</svg></div>
+<div class="viz-legend" aria-label="Légende"><span><i class="viz-key"></i>Route configurée</span><span><i class="viz-key proof"></i>Backend confirmé par trace Azure</span><span id="viz-replay-label" class="viz-replay" hidden>REJEU</span></div>
+<p id="viz-caption" class="viz-note muted">Le backend réel apparaît seulement après l’ingestion de la trace native. Les points montrent les appels observés; la répartition 80/20 n’est pas garantie sur dix appels.</p>
+<p id="viz-quota-note" class="viz-note muted">Les quotas Azure ne sont pas directement observables.</p>
+<div id="viz-meters" class="viz-meter-list"></div>
 </section>
 <section class="live" aria-labelledby="live-title">
 <div class="live-head"><h2 id="live-title">Fil d’exécution</h2><span id="counter" class="counter"></span></div>
@@ -130,17 +191,18 @@ function describe(e,j){
     case "stopped":return "Scénario arrêté. Profil initial rétabli, observations conservées.";
     case "identities":return "La console prépare les identités des équipes A et B.";
     case "checking-limits":return "Lecture des capacités Azure pour espacer les appels.";
-    case "applying-profile":return `Configuration de la passerelle : ${names[j.scenario]}. Écriture dans Azure de la gouvernance de l’espace de travail et des alias demo-chat et demo-alt.`;
+    case "applying-profile":return `Configuration de la passerelle : ${names[j.scenario]}. Écriture dans Azure de la gouvernance de l’espace de travail et de l’alias demo-chat.`;
     case "profile-applied":return `Azure a relu la configuration « ${names[j.scenario]} » : elle est en place.`;
     case "quota-window":return `Attente de la prochaine fenêtre de quota (${e.seconds} s au départ).`;
     case "pacing":return `Pause avant l’appel de l’équipe ${e.team} pour respecter la cadence Azure (${e.seconds} s au départ).`;
     case "sending":return `${call} : envoi vers la passerelle.${phases[e.phase]?" "+phases[e.phase]+".":""}`;
     case "responded":{
-      const expected=(e.phase==="all-down"&&e.status===503)||(["consume-A","still-rejected","alternate-rejected"].includes(e.phase)&&((j.scenario==="token-rate"&&e.status===429)||(j.scenario==="token-quota"&&e.status===403)));
+      const expected=(e.phase==="all-down"&&e.status>=400)||(["consume-A","still-rejected","alternate-rejected"].includes(e.phase)&&((j.scenario==="token-rate"&&e.status===429)||(j.scenario==="token-quota"&&e.status===403)));
       const result=e.status===200?"réponse reçue":e.status===429?"trop de requêtes":e.status===403?"accès refusé":e.status===503?"service indisponible":"réponse de la passerelle";
       return `${call} : ${result} (HTTP ${e.status}).${expected?" C’est le statut attendu pour ce test.":""}`;
     }
     case "injecting":return `Simulation de panne : modification de la route du backend ${e.backend}.`;
+    case "fault-propagation":return `Panne du backend ${e.backend} confirmée par Azure. Pause de ${e.seconds} s : la passerelle met quelques secondes à l’appliquer avant l’appel de test.`;
     case "repairing-routes":return "Remise en service des deux routes de modèles.";
     case "recovery-window":return `Routes rétablies. Pause de ${e.seconds} s avant le contrôle de récupération.`;
     case "restoring":return j.scenario==="reset"?"Restauration du profil initial de la passerelle.":`Restauration du profil initial de la passerelle après « ${names[j.scenario]} ».`;
@@ -158,7 +220,7 @@ function describe(e,j){
   }
 }
 function text(id,value){const n=el(id);if(n.textContent!==value)n.textContent=value}
-const purposes={baseline:"Vérifier que A et B atteignent les deux modèles par leurs alias, sans routage avancé ni limite.","weighted-routing":"Montrer qu’un même alias répartit ses appels entre deux déploiements Azure. Sur 10 appels, un écart à 8/2 est normal.",failover:"Casser volontairement la route du backend 1 puis du 2 : observer la bascule, l’exclusion temporaire, l’indisponibilité totale (HTTP 503), puis la récupération.","token-rate":"L’équipe A consomme vite son enveloppe de la minute et doit recevoir HTTP 429 ; l’équipe B continue avec son propre compteur.","token-quota":"L’équipe A épuise son quota horaire et doit recevoir HTTP 403 sur les deux alias ; l’équipe B continue."};
+const purposes={baseline:"Vérifier que A et B atteignent le modèle par l’alias demo-chat, sans routage avancé ni limite.","weighted-routing":"Montrer qu’un même alias répartit ses appels entre deux déploiements Azure. Sur 10 appels, un écart à 8/2 est normal.",failover:"Casser volontairement la route du backend 1 puis du 2 : observer la bascule, l’exclusion temporaire (qui vaut aussi pour l’équipe B), l’indisponibilité totale (erreur HTTP attendue), puis la récupération des deux équipes.","token-rate":"L’équipe A consomme vite son enveloppe de la minute et doit recevoir HTTP 429 ; l’équipe B continue avec son propre compteur.","token-quota":"L’équipe A épuise son quota horaire et doit recevoir HTTP 403 ; l’équipe B continue avec son propre compteur."};
 const periods={minute:"minute",hour:"heure",day:"jour"};
 function routeText(r){
   const t=r.targets.slice().sort((a,b)=>a.priority-b.priority||a.backend-b.backend);
@@ -174,14 +236,15 @@ function failoverText(c){
 function policyShort(p){const per=periods[p.period]||p.period;return p.type==="tokenLimit"?`${p.count} tokens par ${per}`:p.type==="costLimit"?`${p.amount} USD par ${per}`:p.type}
 function policyText(p){
   const who=p.counterKey?.length===1&&p.counterKey[0]==="identity"?"pour chaque identité appelante (A et B ont chacune leur compteur)":`compteur : ${(p.counterKey||[]).join(", ")}`;
-  const where=p.scope==="workspace"?", valable sur les deux alias":"";
+  const where=p.scope==="workspace"?", sur tout l’espace de travail de la passerelle":"";
   const extra=p.type==="tokenLimit"?" Un appel déjà accepté peut dépasser le seuil ; les suivants sont refusés.":p.overrides?` ${p.overrides} exception(s) ciblée(s).`:"";
   return `${policyShort(p)} ${who}${where}.${extra}`;
 }
 function shape(c){
   if(!c||typeof c!=="object")return null;
   const list=v=>Array.isArray(v)?v:v&&typeof v==="object"?[v]:[];
-  return {routes:list(c.routes).map(r=>({alias:String(r.alias||"alias"),targets:list(r.targets)})).filter(r=>r.targets.length),maxRetryAttempts:Number(c.maxRetryAttempts)||0,failures:list(c.failures),policies:list(c.policies)};
+  // demo-alt stays configured for optional CLI checks but is not shown in the workshop.
+  return {routes:list(c.routes).map(r=>({alias:String(r.alias||"alias"),targets:list(r.targets)})).filter(r=>r.targets.length&&r.alias!=="demo-alt"),maxRetryAttempts:Number(c.maxRetryAttempts)||0,failures:list(c.failures),policies:list(c.policies)};
 }
 function configLines(c){
   return [...c.routes.map(r=>[r.alias,routeText(r)]),["Bascule",failoverText(c)],["Gouvernance",c.policies.length?c.policies.map(policyText).join(" "):"aucune limite de tokens ni de coût."]];
@@ -196,7 +259,7 @@ function explain(e,j){
   if(e.repairs)changes.push(`contrôle de l’adresse réelle des ${e.repairs} backend(s) touché(s) par la panne simulée, réécrite si nécessaire`);
   if(prev?.policies.length)changes.push(`retrait de ${prev.policies.map(policyShort).join(", ")}`);
   if(prev&&(prev.maxRetryAttempts||prev.failures.length))changes.push("retrait des règles de bascule et d’exclusion");
-  if(prev&&!sameRoutes(prev,e.config))changes.push("retour au routage initial, un premier choix par alias");
+  if(prev&&!sameRoutes(prev,config))changes.push("retour au routage initial, un premier choix par alias");
   const lines=[["Pourquoi","laisser une passerelle neutre pour le scénario suivant, même après Stop ou erreur."],["Changements",changes.length?changes.join(" ; ")+".":prev?"aucun : ce scénario utilise déjà le profil initial ; Azure le vérifie sans le réécrire.":"rétablissement complet du profil initial."],...configLines(config)];
   if(prev?.policies.length)lines.push(["Compteurs","les tokens déjà consommés ne sont pas remis à zéro ; ils se renouvellent à la fin de leur période."]);
   if(prev?.failures.length)lines.push(["Exclusions","une exclusion déjà active n’est pas annulée ; elle expire d’elle-même."]);
@@ -214,7 +277,7 @@ function showActivity(job){
   text("live-title",job&&!awaiting?`Fil d’exécution · ${names[job.scenario]}`:"Fil d’exécution");
   text("action",awaiting?"Demande de lancement en cours…":launchError?"Lancement non confirmé. Vérifiez l’historique avant de réessayer.":job?.status==="failed"&&job.finishedAt?"Échec du scénario · résultats non certifiés.":last?describe(last,job):job?(labels[job.status]||"Préparation"):"Choisissez un scénario pour suivre ses actions ici.");
   const count=job?.requests.length||0;
-  const target=({baseline:4,"weighted-routing":10,failover:7})[job?.scenario];
+  const target=({baseline:2,"weighted-routing":10,failover:6})[job?.scenario];
   text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 12 au maximum`);
   text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · ${job.native.length}/${count} traces Azure · profil initial ${job.restored?"rétabli":"non encore confirmé"}.`);
   const key=awaiting||!job||!last||launchError||(job.status==="failed"&&job.finishedAt)?"":`${job.id}:${events.length}`;
@@ -234,6 +297,225 @@ function showActivity(job){
   }
   feedCount=events.length;
 }
+const baselineVizConfig={profile:"baseline",routes:[{alias:"demo-chat",targets:[{backend:1,priority:0,weight:1},{backend:2,priority:1,weight:1}]}],maxRetryAttempts:0,failures:[],policies:[]};
+const replaySteps={
+  baseline:[["configure","Profil initial"],["traffic","Appels A et B"],["evidence","Traces Azure"],["restore","Profil rétabli"]],
+  "weighted-routing":[["configure","Pondération 80/20"],["traffic","10 appels"],["evidence","Backends tracés"],["restore","Profil rétabli"]],
+  failover:[["primary","Route principale"],["fault1","Panne backend 1"],["retry","Bascule"],["excluded","Exclusion pour B"],["fault2","Panne backend 2"],["allDown","Erreur attendue"],["repair","Réparation"],["recovery","Récupération"],["evidence","Traces Azure"],["restore","Profil rétabli"]],
+  "token-rate":[["configure","Limite par minute"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Profil rétabli"]],
+  "token-quota":[["configure","Quota horaire"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Profil rétabli"]],
+  reset:[["configure","Profil initial"],["restore","Profil relu"]]
+};
+let replayState=null,replayTimer=null,vizRouteKey="",vizProofKey="",vizMeterKey="";
+function svg(tag,attrs={},label){
+  const n=document.createElementNS("http://www.w3.org/2000/svg",tag);
+  for(const [key,value] of Object.entries(attrs))n.setAttribute(key,String(value));
+  if(label!==undefined)n.textContent=label;
+  return n;
+}
+function clear(id){el(id).replaceChildren()}
+function replayElapsed(now=performance.now()){
+  if(!replayState)return 0;
+  return replayState.elapsed+(replayState.playing?(now-replayState.wallStart)*replayState.speed/1000:0);
+}
+function stepForEvent(e){
+  if(!e)return null;
+  if(["applying-profile","profile-applied"].includes(e.kind))return "configure";
+  if(["restoring","profile-restored","restored"].includes(e.kind))return "restore";
+  if(["awaiting-traces","traces","verifying","verified"].includes(e.kind))return "evidence";
+  if(e.kind==="injecting")return Number(e.backend)===1?"fault1":"fault2";
+  if(e.kind==="fault-propagation")return Number(e.backend)===1?"fault1":"fault2";
+  if(e.kind==="repairing-routes"||e.kind==="repair")return "repair";
+  if(e.kind==="recovery-window")return "recovery";
+  if(["sending","responded"].includes(e.kind)){
+    if(e.phase==="primary"||e.phase==="healthy"||e.phase==="initial-A"||e.phase==="initial-B")return "primary";
+    if(e.phase==="failover")return "retry";
+    if(e.phase==="excluded")return "excluded";
+    if(e.phase==="all-down")return "allDown";
+    if(e.phase==="recovered"||e.phase==="recovered-secondary")return "recovery";
+    if(e.phase==="consume-A"||e.phase==="still-rejected"||e.phase==="alternate-rejected")return "consume";
+    if(e.phase==="B-continues"||e.phase==="B-alternate")return "continue";
+    if(e.phase==="weighted")return "traffic";
+  }
+  return null;
+}
+function renderViz(job){
+  const replaying=Boolean(replayState&&job&&replayState.jobId===job.id);
+  const mobile=window.matchMedia("(max-width:600px)").matches;
+  const topology=el("topology");
+  topology.setAttribute("viewBox",mobile?"0 0 390 660":"0 0 1000 330");
+  el("viz-input-a").setAttribute("transform",mobile?"translate(0 -44)":"");
+  el("viz-input-b").setAttribute("transform",mobile?"translate(190 -174)":"");
+  el("viz-gateway-node").setAttribute("transform",mobile?"translate(-310 80)":"");
+  el("viz-backend-1-node").setAttribute("transform",mobile?"translate(-790 372)":"");
+  el("viz-backend-2-node").setAttribute("transform",mobile?"translate(-600 242)":"");
+  el("viz-wire-A").setAttribute("d",mobile?"M190 61 C165 95 150 130 130 170":"M190 105 C245 105 285 145 350 150");
+  el("viz-wire-B").setAttribute("d",mobile?"M380 61 C300 95 280 130 260 170":"M190 235 C245 235 285 195 350 190");
+  const activity=replaying?job.activity.slice(0,replayState.cursor+1):job?.activity||[];
+  const responseCount=replaying?activity.filter(e=>e.kind==="responded").length:(job?.requests||[]).length;
+  const requests=(job?.requests||[]).slice(0,responseCount);
+  const requestIds=new Set(requests.map(r=>r.traceId));
+  const native=(job?.native||[]).filter(r=>requestIds.has(r.TraceId));
+  const configEvent=replaying
+    ?activity.findLast(e=>["applying-profile","restoring"].includes(e.kind)&&e.config)
+    :activity.findLast(e=>e.kind==="applying-profile"&&e.config)||activity.findLast(e=>e.kind==="restoring"&&e.config);
+  const config=shape(configEvent?.config)||baselineVizConfig;
+  const faulted=new Set();
+  for(const event of activity){
+    if(event.kind==="injecting"||event.kind==="fault-propagation")faulted.add(Number(event.backend));
+    if(event.kind==="repairing-routes"||event.kind==="repair"||event.kind==="profile-restored"||event.kind==="restored")faulted.clear();
+  }
+  for(const backend of [1,2]){
+    const box=el(`viz-backend-${backend}`),label=el(`viz-backend-${backend}-state`),down=faulted.has(backend);
+    box.classList.toggle("is-down",down);label.classList.toggle("is-down",down);
+    label.classList.remove("is-confirmed");
+    text(`viz-backend-${backend}-state`,down?"Panne simulée · en attente":"État non vérifié");
+  }
+  const route= config.routes.find(r=>r.alias==="demo-chat");
+  const routeLayer=el("viz-route-layer"),proofLayer=el("viz-proof-layer"),callLayer=el("viz-call-layer");
+  clear("viz-call-layer");
+  const targets=(route?.targets||[]).slice().sort((a,b)=>a.priority-b.priority||a.backend-b.backend);
+  const weighted=targets.length>1&&targets.every(t=>t.priority===targets[0].priority);
+  const weightTotal=targets.reduce((sum,t)=>sum+(Number(t.weight)||0),0)||1;
+  const paths=mobile
+    ?{1:"M130 320 C130 370 100 380 100 440",2:"M260 320 C260 370 290 380 290 440"}
+    :{1:"M650 145 C710 145 740 105 810 105",2:"M650 195 C710 195 740 235 810 235"};
+  const pathLabels=mobile?{1:{x:100,y:416},2:{x:290,y:416}}:{1:{x:730,y:88},2:{x:730,y:263}};
+  const confirmed={1:0,2:0};
+  for(const row of native){
+    if(String(row.Backend||"").includes("backend-1"))confirmed[1]++;
+    if(String(row.Backend||"").includes("backend-2"))confirmed[2]++;
+  }
+  for(const backend of [1,2]){
+    if(!faulted.has(backend)&&confirmed[backend]){
+      el(`viz-backend-${backend}-state`).classList.add("is-confirmed");
+      text(`viz-backend-${backend}-state`,`${confirmed[backend]} trace(s) reçue(s)`);
+    }
+  }
+  const routeKey=JSON.stringify([mobile,config]);
+  if(routeKey!==vizRouteKey){
+    clear("viz-route-layer");vizRouteKey=routeKey;
+    for(const target of targets){
+      const backend=Number(target.backend),d=paths[backend],point=pathLabels[backend];
+      if(!d)continue;
+      const width=weighted?2+7*(Number(target.weight)||0)/weightTotal:(target.priority===targets[0]?.priority?7:3);
+      routeLayer.append(svg("path",{d,class:`viz-route${target.priority===targets[0]?.priority?"":" secondary"}`,"stroke-width":width}));
+      const value=weighted?`${Math.round(100*(Number(target.weight)||0)/weightTotal)} %`:`Priorité ${target.priority}`;
+      routeLayer.append(svg("text",{x:point.x,y:point.y,class:"viz-small","text-anchor":"middle"},value));
+    }
+  }
+  const proofKey=JSON.stringify([mobile,targets,confirmed]);
+  if(proofKey!==vizProofKey){
+    clear("viz-proof-layer");vizProofKey=proofKey;
+    for(const target of targets){
+      const backend=Number(target.backend),d=paths[backend],point=pathLabels[backend];
+      if(d&&confirmed[backend]){
+        proofLayer.append(svg("path",{d,class:"viz-proof"}));
+        proofLayer.append(svg("text",{x:point.x,y:point.y+15,class:"viz-small","text-anchor":"middle"},`${confirmed[backend]} trace(s)`));
+      }
+    }
+  }
+  const phaseEvent=activity.findLast(e=>e.kind==="sending"||e.kind==="responded");
+  for(const team of ["A","B"]){
+    const packet=el(`viz-packet-${team}`);
+    const sent=phaseEvent?.team===team;
+    packet.hidden=!sent;
+    if(sent){
+      const positions=mobile
+        ?{A:{send:[130,170],return:[100,61]},B:{send:[260,170],return:[295,61]}}
+        :{A:{send:[350,150],return:[190,105]},B:{send:[350,190],return:[190,235]}};
+      const [x,y]=positions[team][phaseEvent.kind==="sending"?"send":"return"];
+      packet.setAttribute("cx",x);packet.setAttribute("cy",y);
+      packet.setAttribute("aria-label",`Appel de l’équipe ${team}`);
+      packet.setAttribute("opacity",phaseEvent.kind==="responded"?.55:1);
+    }
+  }
+  if(requests.length){
+    callLayer.append(svg("text",{x:mobile?20:420,y:mobile?565:310,class:"viz-small"},"Appels observés · backend coloré seulement si confirmé"));
+    requests.slice(0,10).forEach((r,index)=>{
+      const actual=native.find(n=>n.TraceId===r.traceId);
+      const backend=String(actual?.Backend||"");
+      const fill=backend.includes("backend-1")?"var(--cp-success)":backend.includes("backend-2")?"var(--cp-link)":"var(--cp-border-strong)";
+      const cx=mobile?22+index*35:716+index*25,cy=mobile?592:306;
+      const dot=svg("circle",{cx,cy,r:8,fill});
+      const title=svg("title",{},`Appel ${index+1}, équipe ${r.team}, HTTP ${r.status}${backend?`, ${backend}`:", backend en attente de trace"}`);
+      dot.append(title);callLayer.append(dot);
+    });
+  }
+  const latest=activity.at(-1),restored=activity.some(e=>e.kind==="profile-restored"||e.kind==="restored");
+  let gatewayState=configEvent?"Écriture du profil dans Azure":"Profil de référence · non vérifié";
+  if(activity.some(e=>e.kind==="profile-applied"))gatewayState="Configuration relue par Azure";
+  if(activity.some(e=>e.kind==="restoring"))gatewayState="Restauration du profil initial en cours";
+  if(latest?.kind==="profile-restored"||latest?.kind==="restored")gatewayState="Profil initial relu par Azure";
+  if(job&&restored&&["verified","complete","stopped"].includes(job.status))gatewayState="Profil initial rétabli · configuration du scénario affichée";
+  const mobileState=gatewayState.startsWith("Profil initial rétabli")?"Profil initial rétabli":gatewayState;
+  text("viz-gateway-state",mobile?mobileState:gatewayState);
+  const policy=config.policies.map(policyShort).join(" · ")||"Aucun quota configuré";
+  const failures=config.failures||[],exclude=[...new Set(failures.map(f=>Number(f.excludeSeconds)).filter(Boolean))];
+  const retry=config.maxRetryAttempts?`${config.maxRetryAttempts} nouvelle tentative · exclusion ${exclude.join("/")} s`:"Aucune règle de bascule";
+  text("viz-gateway-policy",config.policies.length?policy:retry);
+  const desc=`Applications A et B appellent demo-chat. ${targets.map(t=>`Backend ${t.backend}, ${weighted?`${Math.round(100*(Number(t.weight)||0)/weightTotal)} pour cent du poids`: `priorité ${t.priority}`}`).join("; ")||"aucune route décrite"}. ${native.length} preuve(s) native(s) reçue(s).`;
+  el("viz-svg-desc").textContent=desc;
+  const stageList=el("viz-steps");clear("viz-steps");
+  const stages=replaySteps[job?.scenario]||replaySteps.baseline;
+  const currentStep=stepForEvent(latest);
+  let currentIndex=stages.findIndex(([id])=>id===currentStep);
+  if(currentIndex<0)currentIndex=activity.length?0:-1;
+  const finished=Boolean(job&&["verified","complete"].includes(job.status)&&restored);
+  stages.forEach(([id,label],index)=>{
+    const item=node("li",label);
+    if(finished||index<currentIndex)item.dataset.state="done";
+    else if(index===currentIndex)item.setAttribute("aria-current","step");
+    stageList.append(item);
+  });
+  const replayButton=el("viz-replay");
+  replayButton.disabled=!job||(job.activity||[]).length<2||(["configuring","running","awaiting-native"].includes(job.status)&&!replaying);
+  replayButton.textContent=replaying&&replayState.playing?"Pause":replaying&&!replayState.finished?"Reprendre":"Rejouer";
+  el("viz-replay-label").hidden=!replaying;
+  text("viz-caption",replaying?"Rejeu des événements enregistrés — aucun appel n’est envoyé.":native.length?`${native.length} trace(s) native(s) reçue(s) pour ${requests.length} réponse(s). Les routes en pointillés restent la configuration; les traces ne sont pas déduites.`:`${requests.length} appel(s) observé(s). Le backend réel apparaît seulement après l’ingestion de la trace native. Les points non colorés attendent cette preuve.`);
+  const meters=el("viz-meters");
+  const tokenPolicy=config.policies.find(p=>p.type==="tokenLimit");
+  const meterKey=JSON.stringify(tokenPolicy||null);
+  if(meterKey!==vizMeterKey){
+    meters.replaceChildren();vizMeterKey=meterKey;
+    if(tokenPolicy){
+      for(const team of ["A","B"]){
+        const meter=node("div",undefined,"viz-meter"),head=node("div",undefined,"viz-meter-head"),track=node("div",undefined,"viz-meter-track"),fill=node("div",undefined,"viz-meter-fill");
+        meter.dataset.team=team;head.append(node("strong",`Équipe ${team}`),node("span","0 tokens observés"));track.setAttribute("role","img");track.setAttribute("aria-label",`Tokens observés pour l’équipe ${team}`);
+        track.append(fill);meter.append(head,track);meters.append(meter);
+      }
+    }
+  }
+  if(tokenPolicy){
+    const limit=Number(tokenPolicy.count)||0;
+    text("viz-quota-note",`Jauges = tokens observés par l’application, pas le compteur interne Azure. Limite configurée : ${limit} par ${periods[tokenPolicy.period]||tokenPolicy.period}, par identité.`);
+    for(const team of ["A","B"]){
+      const total=requests.filter(r=>r.team===team).reduce((sum,r)=>sum+Number(r.usage?.total_tokens||0),0);
+      const meter=meters.querySelector(`[data-team="${team}"]`),fill=meter.querySelector(".viz-meter-fill"),track=meter.querySelector(".viz-meter-track");
+      meter.querySelector(".viz-meter-head span").textContent=`${total} / ${limit} tokens observés`;
+      track.setAttribute("aria-label",`Équipe ${team}: ${total} tokens observés sur ${limit} configurés`);
+      fill.style.width=`${Math.min(100,limit?100*total/limit:0)}%`;
+    }
+  }else text("viz-quota-note","Aucune limite de tokens active dans le profil affiché. Les quotas Azure ne sont pas directement observables.");
+  if(weighted){
+    const weightedRequests=requests.length;
+    text("viz-quota-note",`${weightedRequests} / 10 appels observés. Le 80/20 décrit les poids configurés, pas une promesse de résultat exact; les backends affichés exigent une trace Azure.`);
+  }
+  if(replaying)text("viz-replay-label",`REJEU · ${replayState.speed}×`);
+}
+function tickReplay(){
+  if(!replayState?.playing)return;
+  const job=state?.jobs.find(j=>j.id===replayState.jobId);
+  if(!job){replayState=null;render();return}
+  const events=job.activity||[];
+  const target=(events[0]?.at||0)+replayElapsed();
+  replayState.cursor=events.findLastIndex(e=>e.at<=target);
+  if(replayState.cursor>=events.length-1){
+    replayState.cursor=events.length-1;replayState.playing=false;replayState.finished=true;
+    clearTimeout(replayTimer);replayTimer=null;
+  }else replayTimer=setTimeout(tickReplay,100);
+  render();
+}
 const el=id=>document.getElementById(id);
 function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function metric(parent,value,label){const n=node("div");n.append(node("strong",value),node("span",label));parent.append(n)}
@@ -252,9 +534,11 @@ function render(){
   for(const j of jobs){const o=node("option",`${names[j.scenario]} · ${clock.format(new Date(j.startedAt*1000))} · ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
   if(!jobs.length)history.append(node("option","Aucune exécution"));
   const job=jobs.find(j=>j.id===selected);
+  if(replayState&&replayState.jobId!==job?.id){clearTimeout(replayTimer);replayTimer=null;replayState=null}
   el("stop").disabled=!state.busy||!job||job.id!==latest?.id||job.scenario==="reset"||!["configuring","running","awaiting-native"].includes(job.status)||job.stopRequested||stopping===job.id;
   el("error").textContent=state.error||launchError||stopError||job?.error||"";
   showActivity(job);
+  renderViz(job);
   const native=new Map((job?.native||[]).map(r=>[r.TraceId,r]));
   for(const team of ["A","B"]){
     const rows=(job?.requests||[]).filter(r=>r.team===team), metrics=el("metrics-"+team);metrics.replaceChildren();
@@ -296,7 +580,33 @@ el("stop").addEventListener("click",async()=>{
   try{await command("/api/stop",{id});text("action","Arrêt demandé. Attente de la fin de l’opération en cours.")}
   catch(e){stopping=null;stopError=e.message;text("error",stopError)}
 });
-el("history").addEventListener("change",e=>{launchError=stopError="";selected=e.target.value;render()});
+el("history").addEventListener("change",e=>{launchError=stopError="";clearTimeout(replayTimer);replayTimer=null;replayState=null;selected=e.target.value;render()});
+el("viz-replay").addEventListener("click",()=>{
+  const job=state?.jobs.find(j=>j.id===selected);
+  if(!job)return;
+  clearTimeout(replayTimer);replayTimer=null;
+  if(replayState?.jobId===job.id&&replayState.playing){
+    replayState.elapsed=replayElapsed();replayState.playing=false;
+  }else if(replayState?.jobId===job.id&&!replayState.finished){
+    replayState.wallStart=performance.now();replayState.speed=Number(el("viz-speed").value)||1;replayState.playing=true;
+    tickReplay();
+  }else{
+    clearTimeout(replayTimer);
+    replayState={jobId:job.id,cursor:0,elapsed:0,wallStart:performance.now(),speed:Number(el("viz-speed").value)||1,playing:true,finished:false};
+    tickReplay();
+  }
+  render();
+});
+el("viz-speed").addEventListener("change",()=>{
+  if(replayState?.playing){replayState.elapsed=replayElapsed();replayState.wallStart=performance.now();replayState.speed=Number(el("viz-speed").value)||1}
+});
+el("viz-fullscreen").addEventListener("click",async()=>{
+  try{
+    if(document.fullscreenElement)await document.exitFullscreen();
+    else await el("gateway-viz").requestFullscreen();
+  }catch(error){text("error",`Le plein écran n’a pas pu être activé : ${error.message}`)}
+});
+document.addEventListener("fullscreenchange",()=>text("viz-fullscreen",document.fullscreenElement?"Quitter le plein écran":"Plein écran"));
 poll();
 </script>
 </body>
