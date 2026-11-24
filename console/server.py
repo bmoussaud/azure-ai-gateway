@@ -17,6 +17,12 @@ ROOT = Path(__file__).resolve().parent.parent
 SCENARIOS = frozenset(("baseline", "weighted-routing", "failover", "token-rate", "token-quota", "reset"))
 
 
+def complete_records(path):
+    # One snapshot: a trailing partial write (including a split UTF-8 character) waits until next poll.
+    data = path.read_bytes()
+    return [json.loads(line) for line in data.split(b"\n")[:-1] if line.strip()]
+
+
 def managed_token(client_id, resource):
     endpoint = os.environ["IDENTITY_ENDPOINT"]
     query = urllib.parse.urlencode({"api-version": "2019-08-01", "client_id": client_id, "resource": resource})
@@ -81,25 +87,33 @@ class Console:
             return 429, {"error": "Please wait ten seconds between scenario launches."}
         self.last_start = time.monotonic()
         job = {"id": uuid.uuid4().hex, "scenario": scenario, "status": "configuring",
-               "startedAt": time.time(), "requests": [], "native": [], "error": None,
+               "startedAt": time.time(), "requests": [], "native": [], "activity": [], "error": None,
                "clientRetries": 0, "concurrency": 1, "restored": False,
                "requestCeiling": None, "minimumSpacingSeconds": None, "finishedAt": None}
+        self.note(job, "accepted")
         with self.guard:
             self.jobs = (self.jobs + [job])[-20:]
         threading.Thread(target=self.run, args=(job,), daemon=True).start()
         return 202, {"id": job["id"]}
 
-    def observe(self, job, directory):
+    def note(self, job, kind, **fields):
+        with self.guard:
+            job.setdefault("activity", []).append({"at": time.time(), "kind": kind, **fields})
+
+    def observe(self, job, directory, seen):
+        activity = directory / "activity.jsonl"
+        if activity.exists():
+            records = complete_records(activity)
+            with self.guard:
+                job["activity"].extend(records[seen:])
+                seen = len(records)
         events = directory / "events.jsonl"
         if events.exists():
-            lines = events.read_text(encoding="utf-8-sig").splitlines()
-            # An append can be observed before its terminating newline is flushed.
-            complete = events.read_bytes().endswith(b"\n")
-            if not complete:
-                lines = lines[:-1]
+            requests = complete_records(events)
             with self.guard:
-                job["requests"] = [json.loads(line) for line in lines if line]
+                job["requests"] = requests
                 job["status"] = "running"
+        return seen
 
     def run(self, job):
         directory = self.data / job["id"]
@@ -107,16 +121,20 @@ class Console:
             directory.mkdir()
             env = dict(self.env)
             if job["scenario"] != "reset":
+                self.note(job, "identities")
                 for team in ("A", "B"):
                     env[f"DEMO_TEAM_{team}_TOKEN"] = managed_token(
                         self.state["callerIdentities"][team]["clientId"], "https://ai.gateway.azure.com")
+            else:
+                self.note(job, "restoring")
             with (directory / "worker.log").open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(self.command("console-worker.ps1", "-Scenario", job["scenario"],
                                                        "-OutputDirectory", directory),
                                            env=env, stdout=log, stderr=subprocess.STDOUT)
                 deadline = time.monotonic() + 1800
+                seen = 0
                 while process.poll() is None:
-                    self.observe(job, directory)
+                    seen = self.observe(job, directory, seen)
                     if time.monotonic() > deadline:
                         process.terminate()
                         try:
@@ -126,7 +144,7 @@ class Console:
                             process.wait()
                         raise TimeoutError("Scenario exceeded its thirty-minute server bound")
                     time.sleep(1)
-                self.observe(job, directory)
+                self.observe(job, directory, seen)
                 results = list(directory.glob("*.json"))
                 run = next((p for p in results if len(p.stem) == 32), None)
                 if run:
@@ -138,37 +156,48 @@ class Console:
                     raise RuntimeError("Scenario assertion failed. HTTP evidence retained; not certified.")
                 if job["scenario"] == "reset":
                     job.update(status="complete", restored=True)
+                    self.note(job, "restored")
                     return
                 job["status"] = "awaiting-native"
+                self.note(job, "awaiting-traces")
                 for _ in range(30):
                     query = subprocess.run(self.command("console-native.ps1", "-EventsPath", directory / "events.jsonl",
                                                         "-OutputPath", directory / "native.json"),
                                            env=self.env, stdout=log, stderr=subprocess.STDOUT, timeout=90)
                     if query.returncode:
                         raise RuntimeError("Native telemetry query failed; inspect operator read permissions.")
-                    job["native"] = json.loads((directory / "native.json").read_text(encoding="utf-8-sig"))
+                    native = json.loads((directory / "native.json").read_text(encoding="utf-8-sig"))
+                    if len(native) != len(job["native"]):
+                        self.note(job, "traces", count=len(native), total=len(job["requests"]))
+                    job["native"] = native
                     if len(job["native"]) == len(job["requests"]):
+                        self.note(job, "verifying")
                         verified = subprocess.run(self.command("verify-results.ps1", "-ResultsPath", run),
                                                   env=self.env, stdout=log, stderr=subprocess.STDOUT, timeout=90)
                         if verified.returncode:
                             raise RuntimeError("Native scenario assertions failed; HTTP alone is not certification.")
                         job["status"] = "verified"
+                        self.note(job, "verified")
                         return
                     time.sleep(15)
                 raise TimeoutError("Native ingestion not complete after bounded read-only verification.")
         except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
             job["status"] = "failed"
+            self.note(job, "failed")
             job["error"] = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else type(error).__name__
             print(f"Job {job['id']} failed: {job['error']}", flush=True)
         finally:
             # Even a killed worker must not leave the live gateway in a fault/governance profile.
             if not job["restored"]:
+                self.note(job, "repair")
                 try:
                     repair = subprocess.run(self.command("reset-demo.ps1"), env=self.env, check=True, timeout=360)
                     job["restored"] = repair.returncode == 0
+                    self.note(job, "restored")
                 except (OSError, subprocess.SubprocessError):
                     job["error"] = "BASELINE RESTORATION FAILED. Controls locked; operator reset required."
                     self.ready = False
+                    self.note(job, "repair-failed")
             job["finishedAt"] = time.time()
             try:
                 with self.guard:
@@ -177,6 +206,7 @@ class Console:
                 job["status"] = "failed"
                 job["error"] = "Evidence persistence failed; controls locked. Inspect container storage."
                 self.ready = False
+                self.note(job, "storage-failed")
                 print(f"Job {job['id']}: evidence write failed ({type(error).__name__})", flush=True)
             finally:
                 self.lock.release()

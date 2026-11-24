@@ -79,44 +79,112 @@ button:disabled{opacity:.5;cursor:not-allowed}.primary{background:var(--cp-accen
 .backend{height:8px;background:var(--cp-surface-soft);border-radius:4px;overflow:hidden;margin:12px 0 8px;display:flex}.backend span{background:var(--cp-accent)}.backend span+span{background:var(--cp-border-strong)}#error:empty{display:none}#error{border-left:4px solid var(--cp-danger);padding:16px;color:var(--cp-danger);background:var(--cp-surface)}
 select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);color:var(--cp-text);border:1px solid var(--cp-border);border-radius:.625rem}
 @media(max-width:850px){.teams{grid-template-columns:1fr}header{display:block}main{padding:24px 16px}h1{font-size:28px}}
+.live{border-block:2px solid var(--cp-text);padding:20px 0;margin:24px 0 32px}
+.live-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}.live-head h2{margin:0}
+.live #action{font-size:1.35rem;font-weight:600;line-height:1.35;margin:.8em 0 .3em}
+.live p{margin:.45em 0}.live details{margin-top:16px}.live summary{cursor:pointer;width:fit-content;padding:6px 0}
+.live summary:focus-visible{outline:3px solid var(--cp-accent);outline-offset:2px}
+.feed{max-height:18rem;overflow:auto;list-style:none;padding:0;margin:0}.feed li{display:grid;grid-template-columns:5.5rem 1fr;gap:8px;padding:8px 0;border-top:1px solid var(--cp-border)}
+.feed time,.counter{font-variant-numeric:tabular-nums}.feed time{color:var(--cp-text-muted)}.counter{font-weight:600}
+.status{white-space:normal}.success{color:#16733b}.danger{color:#b42031}html[data-theme="dark"] .success{color:var(--cp-success)}html[data-theme="dark"] .danger{color:var(--cp-danger)}
 </style>
 </head>
 <body>
 <main>
-<header><div><div class="eyebrow">WORKSHOP / MICROSOFT AI GATEWAY</div><h1>Deux applications. Une passerelle.</h1><p class="muted">Routage natif, resilience et enveloppes par identite authentifiee.<br>Aucun jeton Azure n'est transmis au navigateur.</p></div><div id="status" class="status" role="status">Connexion...</div></header>
+<header><div><h1>Deux applications. Une passerelle.</h1><p class="muted">Suivez les appels des équipes A et B à travers Azure AI Gateway.</p></div><div id="status" class="status" role="status">Connexion…</div></header>
 <nav aria-label="Observabilite"><a id="gateway" target="_blank" rel="noopener">Dashboard AI Gateway &#8599;</a><a id="insights" target="_blank" rel="noopener">Application Insights &#8599;</a><a id="workbook" target="_blank" rel="noopener">Azure Workbook &#8599;</a></nav>
 <div id="error" role="alert"></div>
-<section class="card" aria-labelledby="scenarios"><h2 id="scenarios">Piloter la demonstration</h2>
+<section class="card" aria-labelledby="scenarios"><h2 id="scenarios">Lancer un scénario</h2>
 <div class="controls">
-<button class="primary" data-scenario="baseline">Baseline A + B</button><button data-scenario="weighted-routing">Routage 80 / 20</button><button data-scenario="failover">Failover + recuperation</button><button data-scenario="token-rate">Limite tokens / minute</button><button data-scenario="token-quota">Quota horaire</button><button data-scenario="reset">Reset baseline</button><button disabled title="price_missing=true : aucune qualification fiable du seuil cout">Cout : non qualifie</button>
-</div><p class="muted"><small>Un scenario a la fois. Zero retry client, concurrence 1. Cadence derivee des limites reelles des backends (10 RPM). Le 80/20 emet 50 appels et prend environ 6 minutes. Les autres scenarios restent bornes a 12 appels maximum. Le profil baseline est restaure automatiquement.</small></p>
-<label for="history">Execution affichee </label><select id="history"><option>Aucune execution</option></select><p id="run-details" class="muted" aria-live="polite"></p>
+<button disabled class="primary" data-scenario="baseline">Tester A et B</button><button disabled data-scenario="weighted-routing">Répartir le trafic 80/20</button><button disabled data-scenario="failover">Simuler une panne</button><button disabled data-scenario="token-rate">Tester la limite par minute</button><button disabled data-scenario="token-quota">Tester le quota horaire</button><button disabled data-scenario="reset">Rétablir le profil initial</button><button disabled title="Tarifs natifs incomplets (price_missing=true)">Budget monétaire indisponible</button>
+</div><p class="muted"><small>Un seul scénario à la fois, sans relance côté client. Le routage 80/20 envoie 50 appels espacés (environ 6 minutes). Les autres scénarios envoient 12 appels au maximum.</small></p>
+<label for="history">Exécution affichée </label><select id="history"><option>Aucune exécution</option></select>
+</section>
+<section class="live" aria-labelledby="live-title">
+<div class="live-head"><h2 id="live-title">Fil d’exécution</h2><span id="counter" class="counter"></span></div>
+<p id="action" role="status">Connexion à la console…</p><p id="run-details" class="muted"></p>
+<details open><summary>Journal horodaté · du plus récent au plus ancien</summary><ol id="feed" class="feed"></ol></details>
 </section>
 <div class="teams">
-<section class="card" aria-labelledby="team-a"><div class="eyebrow">IDENTITE MANAGEE A</div><h2 id="team-a">Application Equipe A</h2><div id="metrics-A" class="metrics"></div><div id="route-A"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-A"></tbody></table></div></section>
-<section class="card" aria-labelledby="team-b"><div class="eyebrow">IDENTITE MANAGEE B</div><h2 id="team-b">Application Equipe B</h2><div id="metrics-B" class="metrics"></div><div id="route-B"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-B"></tbody></table></div></section>
+<section class="card" aria-labelledby="team-a"><h2 id="team-a">Application de l’équipe A</h2><div id="metrics-A" class="metrics"></div><div id="route-A"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-A"></tbody></table></div></section>
+<section class="card" aria-labelledby="team-b"><h2 id="team-b">Application de l’équipe B</h2><div id="metrics-B" class="metrics"></div><div id="route-B"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-B"></tbody></table></div></section>
 </div>
 <footer><p class="muted"><small>HTTP, tokens et latence : observation immediate. Backend, origine du rejet et cout estime : telemetrie native differee, jamais inferes. Un resultat n'est certifie qu'apres verification des traces. Les limites peuvent etre depassees par un appel deja accepte. GlobalStandard ne garantit pas la residence regionale.</small></p><p id="security" class="muted"></p></footer>
 </main>
 <script>
-let state=null, selected=null;
-const labels={configuring:"Configuration du profil",running:"Trafic borne en cours",complete:"Baseline restauree",verified:"Verifie par telemetrie native","awaiting-native":"Attente de telemetrie native",failed:"Echec / non certifie"};
+let state=null, selected=null, launching=false, awaitingJob=null, feedJob=null, feedCount=0, launchError="";
+const labels={configuring:"Préparation",running:"Exécution",complete:"Profil initial rétabli",verified:"Vérifié","awaiting-native":"Attente des traces",failed:"Échec · non certifié"};
+const names={baseline:"Test A et B","weighted-routing":"Routage 80/20",failover:"Panne et récupération","token-rate":"Limite par minute","token-quota":"Quota horaire",reset:"Retour au profil initial"};
+const phases={healthy:"Vérifier l’accès au modèle",weighted:"Échantillonner le routage",primary:"Vérifier la route principale",secondary:"Vérifier la route secondaire",failover:"Tester la bascule",excluded:"Tester l’exclusion de la route défaillante","all-down":"Tester l’indisponibilité des deux routes",recovered:"Vérifier le retour de la route principale","recovered-secondary":"Vérifier le retour de la route secondaire","initial-A":"Vérifier l’accès initial de A","initial-B":"Vérifier l’accès initial de B","consume-A":"Consommer l’enveloppe de A","still-rejected":"Vérifier si A reste limitée","B-continues":"Vérifier si B peut continuer","alternate-rejected":"Tester la limite de A sur le second alias","B-alternate":"Tester l’accès de B sur le second alias"};
+const clock=new Intl.DateTimeFormat("fr-FR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+function describe(e,j){
+  const call=`Appel ${e.number} · équipe ${e.team} → ${e.alias}`;
+  switch(e.kind){
+    case "accepted":return "La console a accepté le scénario.";
+    case "identities":return "La console prépare les identités des équipes A et B.";
+    case "checking-limits":return "Lecture des capacités Azure pour espacer les appels.";
+    case "applying-profile":return `Configuration de la passerelle : ${names[j.scenario]}.`;
+    case "quota-window":return `Attente de la prochaine fenêtre de quota (${e.seconds} s au départ).`;
+    case "pacing":return `Pause avant l’appel de l’équipe ${e.team} pour respecter la cadence Azure (${e.seconds} s au départ).`;
+    case "sending":return `${call} : envoi vers la passerelle.${phases[e.phase]?" "+phases[e.phase]+".":""}`;
+    case "responded":{
+      const expected=(e.phase==="all-down"&&e.status===503)||(["consume-A","still-rejected","alternate-rejected"].includes(e.phase)&&((j.scenario==="token-rate"&&e.status===429)||(j.scenario==="token-quota"&&e.status===403)));
+      const result=e.status===200?"réponse reçue":e.status===429?"trop de requêtes":e.status===403?"accès refusé":e.status===503?"service indisponible":"réponse de la passerelle";
+      return `${call} : ${result} (HTTP ${e.status}).${expected?" C’est le statut attendu pour ce test.":""}`;
+    }
+    case "injecting":return `Simulation de panne : modification de la route du backend ${e.backend}.`;
+    case "repairing-routes":return "Remise en service des deux routes de modèles.";
+    case "recovery-window":return `Routes rétablies. Pause de ${e.seconds} s avant le contrôle de récupération.`;
+    case "restoring":return "Restauration du profil initial de la passerelle.";
+    case "awaiting-traces":return "Appels terminés. Attente des traces d’Application Insights.";
+    case "traces":return `Application Insights : ${e.count} trace(s) reçue(s) sur ${e.total}.`;
+    case "verifying":return "Comparaison des traces Azure avec les résultats attendus.";
+    case "verified":return "Scénario vérifié : les traces Azure confirment les résultats.";
+    case "restored":return "Le profil initial est rétabli.";
+    case "repair":return "Tentative de remise en état après interruption.";
+    case "failed":return "Le scénario a échoué. Les résultats ne sont pas certifiés.";
+    case "repair-failed":return "Restauration impossible. Les commandes sont verrouillées.";
+    case "storage-failed":return "Enregistrement des preuves impossible. Les commandes sont verrouillées.";
+    default:return "Mise à jour de l’exécution.";
+  }
+}
+function text(id,value){const n=el(id);if(n.textContent!==value)n.textContent=value}
+function showActivity(job){
+  const events=job?.activity||[], last=events.at(-1);
+  const awaiting=launching||awaitingJob!==null;
+  text("live-title",job&&!awaiting?`Fil d’exécution · ${names[job.scenario]}`:"Fil d’exécution");
+  text("action",awaiting?"Demande de lancement en cours…":launchError?"Lancement non confirmé. Vérifiez l’historique avant de réessayer.":job?.status==="failed"&&job.finishedAt?"Échec du scénario · résultats non certifiés.":last?describe(last,job):job?(labels[job.status]||"Préparation"):"Choisissez un scénario pour suivre ses actions ici.");
+  const count=job?.requests.length||0;
+  const target=({baseline:4,"weighted-routing":50,failover:7})[job?.scenario];
+  text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 12 au maximum`);
+  text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · ${job.native.length}/${count} traces Azure · profil initial ${job.restored?"rétabli":"non encore confirmé"}.`);
+  const feed=el("feed"), id=awaiting?null:job?.id;
+  if(feedJob!==id){feed.replaceChildren();feedJob=id;feedCount=0}
+  if(!id)return;
+  for(const e of events.slice(feedCount)){
+    const row=node("li"),date=new Date(e.at*1000),t=node("time",clock.format(date));t.dateTime=date.toISOString();
+    row.append(t,node("span",describe(e,job)));feed.prepend(row);
+  }
+  feedCount=events.length;
+}
 const el=id=>document.getElementById(id);
 function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function metric(parent,value,label){const n=node("div");n.append(node("strong",value),node("span",label));parent.append(n)}
 function render(){
-  el("status").textContent=state.busy?"Scenario en cours":state.ready?"Pret pour la demo":"Initialisation";
+  text("status",state.busy?"Scénario en cours":state.ready?"Prêt pour la démo":"Initialisation");
   el("status").className="status "+(state.ready&&!state.busy?"success":"");
   for(const [id,url] of Object.entries(state.links))el(id).href=url;
   el("security").textContent=state.security;
-  for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=state.busy||!state.ready;
   const jobs=state.jobs.slice().reverse();
+  if(jobs.some(j=>j.id===awaitingJob)){selected=awaitingJob;awaitingJob=null}
+  for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=launching||awaitingJob!==null||state.busy||!state.ready;
   if(!jobs.some(j=>j.id===selected))selected=jobs[0]?.id;
   const history=el("history");history.replaceChildren();
-  for(const j of jobs){const o=node("option",`${j.scenario} | ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
+  for(const j of jobs){const o=node("option",`${names[j.scenario]} · ${clock.format(new Date(j.startedAt*1000))} · ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
+  if(!jobs.length)history.append(node("option","Aucune exécution"));
   const job=jobs.find(j=>j.id===selected);
-  el("error").textContent=state.error||job?.error||"";
-  el("run-details").textContent=job?`${labels[job.status]||job.status} | ${job.requests.length} appels | retries client : 0 | restauration baseline : ${job.restored?"confirmee":"en attente"}`:"Les appels A/B seront affiches ici, avec leur correlation native.";
+  el("error").textContent=state.error||launchError||job?.error||"";
+  showActivity(job);
   const native=new Map((job?.native||[]).map(r=>[r.TraceId,r]));
   for(const team of ["A","B"]){
     const rows=(job?.requests||[]).filter(r=>r.team===team), metrics=el("metrics-"+team);metrics.replaceChildren();
@@ -132,7 +200,7 @@ function render(){
     route.append(bar,node("small",`Backend 1 : ${b1} | Backend 2 : ${b2} | Preuves natives : ${known.length}/${rows.length}`));
     const table=el("rows-"+team);table.replaceChildren();
     for(const r of rows.slice().reverse()){
-      const tr=node("tr"), n=native.get(r.traceId), a=node("td");a.append(node("div",r.phase),node("small",r.alias));
+      const tr=node("tr"), n=native.get(r.traceId), a=node("td");a.append(node("div",phases[r.phase]||r.phase),node("small",r.alias));
       const http=node("td",String(r.status),r.status===200?"success":"danger");
       const usage=node("td",`${r.usage?.total_tokens??"-"} / ${Math.round(r.latencyMs)}`);
       const backend=node("td");backend.append(node("div",n?(n.Backend||n.RejectedPolicy||"Aucun backend"):"En attente d'ingestion native"),node("code",r.traceId));
@@ -141,12 +209,14 @@ function render(){
     }
   }
 }
-async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;el("status").textContent="Connexion interrompue";for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=true}finally{setTimeout(poll,2000)}}
+async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=true}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
 for(const b of document.querySelectorAll("[data-scenario]"))b.addEventListener("click",async()=>{
-  for(const x of document.querySelectorAll("[data-scenario]"))x.disabled=true;
-  try{const r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify({scenario:b.dataset.scenario})});const result=await r.json();if(!r.ok)throw Error(result.error||`HTTP ${r.status}`);selected=result.id}catch(e){el("error").textContent=e.message}
+  launching=true;launchError="";render();
+  try{const r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify({scenario:b.dataset.scenario})});if(!r.ok){const detail=await r.text();let msg;try{msg=JSON.parse(detail).error}catch{}throw Error(msg||`Lancement refusé (HTTP ${r.status}).`)}awaitingJob=(await r.json()).id}
+  catch(e){launchError=e.message;text("error",launchError);text("action","Lancement non confirmé. Vérifiez l’historique avant de réessayer.");}
+  finally{launching=false}
 });
-el("history").addEventListener("change",e=>{selected=e.target.value;render()});
+el("history").addEventListener("change",e=>{launchError="";selected=e.target.value;render()});
 poll();
 </script>
 </body>

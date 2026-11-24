@@ -6,11 +6,19 @@ param(
     [ValidateRange(50,200)][int]$Samples = 100,
     [string]$BaselineEvidencePath,
     [string]$EventPath,
+    [string]$ActivityPath,
     [string]$OutputDirectory = (Join-Path (Split-Path $PSScriptRoot) '.demo')
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'Demo.psm1') -Force
+function Write-Activity([string]$Kind, [hashtable]$Fields = @{}) {
+    if ($ActivityPath) {
+        $entry = @{kind=$Kind; at=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0)} + $Fields
+        $entry | ConvertTo-Json -Compress | Add-Content -LiteralPath $ActivityPath -Encoding utf8
+    }
+}
+Write-Activity 'checking-limits'
 $config = Read-DemoConfig $ConfigPath
 $state = Get-DemoState $config
 $ids = Get-DemoIds $config
@@ -47,14 +55,18 @@ function Send-ScenarioCall([string]$Team, [string]$Alias, [string]$Phase) {
     if ($results.Count -ge $requests) { throw 'Hard request ceiling reached; do not send more traffic.' }
     $remaining = $delaySeconds - $pacing.Elapsed.TotalSeconds
     if ($results.Count -and $remaining -gt 0) {
+        Write-Activity 'pacing' @{team=$Team; seconds=[int][Math]::Ceiling($remaining)}
         Start-Sleep -Milliseconds ([int][Math]::Ceiling(1000 * $remaining))
     }
     $token = if ($Team -eq 'A') { $tokenA } else { $tokenB }
     $markers = if ($Team -eq 'A' -and $Scenario -eq 'token-rate') { 640 } elseif ($Team -eq 'A' -and $Scenario -eq 'token-quota') { 160 } else { 0 }
+    $call = @{team=$Team; alias=$Alias; phase=$Phase; number=$results.Count + 1}
+    Write-Activity 'sending' $call
     $pacing.Restart()
     $r = Invoke-DemoRequest $endpoint $Alias $token $Team $Phase -SyntheticInputMarkers $markers
     $results.Add($r)
     if ($EventPath) { $r | ConvertTo-Json -Depth 15 -Compress | Add-Content -LiteralPath $EventPath }
+    Write-Activity 'responded' ($call + @{status=$r.status})
     Write-Host ("{0} {1} {2} HTTP {3} {4:N0}ms trace={5}" -f $Phase,$Team,$Alias,$r.status,$r.latencyMs,$r.traceId)
     return $r
 }
@@ -72,13 +84,17 @@ function Set-LabPathFault([int]$Backend) {
         }
         $savedModels[$id] = @($model.properties.endpoints)
     }
+    Write-Activity 'injecting' @{backend=$Backend}
     Set-DemoArmProperties $id @{ endpoints = @(@{ api='v1/chat/completions'; path='/demo-injected-unavailable' }) }
 }
 
 try {
+    Write-Activity 'applying-profile'
     Set-DemoProfile $config $Scenario
-    if ($Scenario -eq 'token-rate' -and [DateTimeOffset]::UtcNow.Second -gt 5) {
-        Start-Sleep -Seconds (61 - [DateTimeOffset]::UtcNow.Second)
+    $second = [DateTimeOffset]::UtcNow.Second
+    if ($Scenario -eq 'token-rate' -and $second -gt 5) {
+        Write-Activity 'quota-window' @{seconds=61 - $second}
+        Start-Sleep -Seconds (61 - $second)
     }
     switch ($Scenario) {
         baseline {
@@ -98,7 +114,9 @@ try {
             Set-LabPathFault 2
             $failed = Send-ScenarioCall 'A' 'demo-chat' 'all-down'
             if ($failed.status -lt 400) { throw 'All-down must produce an explicit HTTP error.' }
+            Write-Activity 'repairing-routes'
             foreach ($id in @($savedModels.Keys)) { Set-DemoArmProperties $id @{ endpoints=$savedModels[$id] } }
+            Write-Activity 'recovery-window' @{seconds=35}
             Start-Sleep -Seconds 35
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'recovered')
             Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'recovered-secondary')
@@ -123,6 +141,8 @@ try {
     }
     $outcome = 'http-observed-awaiting-native-telemetry'
 } finally {
+    # Failure to publish progress must never prevent restoration.
+    try { Write-Activity 'restoring' } catch { Write-Warning 'Could not publish restoration progress.' }
     foreach ($id in @($savedModels.Keys)) {
         try { Set-DemoArmProperties $id @{ endpoints=$savedModels[$id] } }
         catch { $restorationFailures.Add("Failed to restore $id : $($_.Exception.Message)") }

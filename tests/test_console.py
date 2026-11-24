@@ -116,6 +116,27 @@ class ConsoleTests(unittest.TestCase):
         self.assertIn("RESTORATION FAILED", job["error"])
         self.assertFalse(self.console.lock.locked())
 
+    def test_activity_reaches_snapshot_before_http_and_partial_rows_are_not_replayed(self):
+        job = {"activity": [], "requests": [], "native": []}
+        self.console.jobs.append(job)
+        directory = Path(self.directory.name)
+        path = directory / "activity.jsonl"
+        sending = {"kind": "sending", "team": "A", "number": 1, "at": 1}
+        responded = {"kind": "responded", "status": 200, "at": 2}
+        response = json.dumps(responded).encode()
+        path.write_bytes(json.dumps(sending).encode() + b"\n" + response[:8])
+        seen = self.console.observe(job, directory, 0)
+        first = self.request("/api/state")[1]["jobs"][0]
+        self.assertEqual(first, {"activity": [sending], "requests": [], "native": []})
+        with path.open("ab") as f:
+            f.write(response[8:] + b"\n")
+        (directory / "events.jsonl").write_bytes(b'{"status":200}\n')
+        seen = self.console.observe(job, directory, seen)
+        self.console.observe(job, directory, seen)
+        self.assertEqual(job["activity"], [sending, responded])
+        self.assertEqual(job["requests"], [{"status": 200}])
+        self.assertEqual(job["native"], [])
+
     def test_evidence_write_failure_is_explicit_and_releases_lock(self):
         self.console.lock.acquire()
         job = {"id": "test-storage", "scenario": "baseline", "restored": False, "error": None}

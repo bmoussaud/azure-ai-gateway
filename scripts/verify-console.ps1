@@ -1,6 +1,6 @@
 #requires -Version 7.4
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'))
+param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uri = [uri]$Url
@@ -23,6 +23,7 @@ function Invoke-ConsoleAction([string]$Scenario) {
 function Wait-ConsoleJob([string]$Id) {
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes(35)
     $previous = ''
+    $inFlight = $false
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
         $state = Read-Console
         $job = @($state.jobs | Where-Object id -CEQ $Id)
@@ -31,9 +32,17 @@ function Wait-ConsoleJob([string]$Id) {
             $previous = $job[0].status
             Write-Host "$($job[0].scenario): $previous"
         }
+        if ($LiveBaselineOnly -and $state.busy -and $job[0].requests.Count -lt 4 -and
+            @($job[0].activity | Where-Object kind -CEQ 'sending').Count) {
+            if (-not $inFlight) { Write-Host 'Observed a live dispatch before all baseline responses arrived.' }
+            $inFlight = $true
+        }
         if ($previous -eq 'failed') { throw "Hosted scenario failed: $($job[0].error)" }
         if ($previous -in @('verified','complete') -and -not $state.busy) {
             if (-not $job[0].restored) { throw 'Hosted job did not confirm baseline restoration.' }
+            if ($LiveBaselineOnly -and (-not $inFlight -or $job[0].requests.Count -ne 4 -or
+                @($job[0].activity | Where-Object kind -CEQ 'responded').Count -ne 4 -or
+                $job[0].activity[-1].kind -cne 'verified')) { throw 'Live baseline journal evidence incomplete.' }
             return $job[0]
         }
         Start-Sleep -Seconds 5
@@ -50,8 +59,8 @@ do {
 } while ($true)
 if ($state.busy) { throw 'Another hosted scenario is already running; acceptance will not interfere.' }
 $page = Invoke-WebRequest $Url -Headers $authorization -TimeoutSec 30
-if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'Application Equipe A' -or
-    $page.Content -notmatch 'Application Equipe B') { throw 'HTTPS page does not contain both application panels.' }
+if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'id="team-a"' -or
+    $page.Content -notmatch 'id="team-b"') { throw 'HTTPS page does not contain both application panels.' }
 $csrf = Invoke-WebRequest "$Url/api/run" -Method Post -ContentType application/json `
     -Headers $authorization -Body '{"scenario":"baseline"}' -SkipHttpErrorCheck -TimeoutSec 30
 if ($csrf.StatusCode -ne 403) { throw 'An authenticated action without CSRF protection was not refused.' }
@@ -64,6 +73,11 @@ $overlap = Invoke-WebRequest "$Url/api/run" -Method Post -ContentType applicatio
 if ($overlap.StatusCode -ne 409) { throw 'Overlapping scenario was not refused.' }
 $jobs = [Collections.Generic.List[object]]::new()
 $jobs.Add((Wait-ConsoleJob $run.id))
+if ($LiveBaselineOnly) {
+    $jobs[0] | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
+    Write-Host 'Live baseline verified: 4 responses, native evidence and restored gateway.'
+    return
+}
 foreach ($scenario in @('failover','token-rate','reset')) {
     $run = Invoke-ConsoleAction $scenario
     $jobs.Add((Wait-ConsoleJob $run.id))
