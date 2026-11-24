@@ -17,7 +17,7 @@ Import-Module (Join-Path $PSScriptRoot 'Demo.psm1') -Force
 function Write-Activity([string]$Kind, [hashtable]$Fields = @{}) {
     if ($ActivityPath) {
         $entry = @{kind=$Kind; at=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0)} + $Fields
-        $entry | ConvertTo-Json -Compress | Add-Content -LiteralPath $ActivityPath -Encoding utf8
+        $entry | ConvertTo-Json -Compress -Depth 10 | Add-Content -LiteralPath $ActivityPath -Encoding utf8
     }
 }
 Write-Activity 'checking-limits'
@@ -119,8 +119,9 @@ function Set-LabPathFault([int]$Backend) {
 
 try {
     Assert-ScenarioActive
-    Write-Activity 'applying-profile'
+    Write-Activity 'applying-profile' @{config=(Get-DemoProfileSummary $config $Scenario)}
     Set-DemoProfile $config $Scenario
+    Write-Activity 'profile-applied'
     $second = [DateTimeOffset]::UtcNow.Second
     if ($Scenario -eq 'token-rate' -and $second -gt 5) {
         Write-Activity 'quota-window' @{seconds=61 - $second}
@@ -175,12 +176,16 @@ try {
     $outcome = 'stopped-by-operator'
 } finally {
     # Failure to publish progress must never prevent restoration.
-    try { Write-Activity 'restoring' } catch { Write-Warning 'Could not publish restoration progress.' }
+    try { Write-Activity 'restoring' @{config=(Get-DemoProfileSummary $config baseline); repairs=$savedModels.Count} }
+    catch { Write-Warning 'Could not publish restoration progress.' }
     foreach ($id in @($savedModels.Keys)) {
         try { Set-DemoArmProperties $id @{ endpoints=$savedModels[$id] } }
         catch { $restorationFailures.Add("Failed to restore $id : $($_.Exception.Message)") }
     }
-    try { Set-DemoProfile $config baseline }
+    try {
+        Set-DemoProfile $config baseline
+        try { Write-Activity 'profile-restored' } catch { Write-Warning 'Could not publish restoration confirmation.' }
+    }
     catch { $restorationFailures.Add("Failed to restore baseline: $($_.Exception.Message)") }
     @{
         runId=$runId; scenario=$Scenario; gatewayId=$state.gatewayId; outcome=$outcome

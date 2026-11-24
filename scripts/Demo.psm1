@@ -227,12 +227,47 @@ function Reset-DemoLabFaults {
     }
 }
 
+function Read-DemoProfile {
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Name)
+    $json = Get-Content -LiteralPath (Join-Path $script:Root "config\profiles\$Name.json") -Raw
+    return $json.Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId) | ConvertFrom-Json -AsHashtable
+}
+
+function Get-DemoAliasTargets {
+    param([hashtable]$Definition, [string]$Name, [string]$Alias)
+    for ($i=0; $i -lt 2; $i++) {
+        $priority = $Definition.backends[$i].priority
+        if ($Alias -eq 'demo-alt' -and $Name -ne 'weighted-routing') { $priority = 1 - $priority }
+        @{ backend = $i + 1; priority = $priority; weight = $Definition.backends[$i].weight }
+    }
+}
+
+function Get-DemoProfileSummary {
+    # Browser-safe explanation of exactly what Set-DemoProfile writes (no identity claims).
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Name)
+    $p = Read-DemoProfile $Config $Name
+    $routes = @(foreach ($alias in @('demo-chat','demo-alt')) {
+        @{ alias = $alias; targets = @(Get-DemoAliasTargets $p $Name $alias) }
+    })
+    $failures = @(foreach ($rule in @($p.failures)) {
+        @{ noResponse = $rule.when -match 'response == null'
+           statusCodes = @([regex]::Matches($rule.when, '\b[1-5]\d\d\b') | ForEach-Object { [int]$_.Value })
+           excludeSeconds = [int][Xml.XmlConvert]::ToTimeSpan($rule.excludeFor).TotalSeconds }
+    })
+    $policies = @(foreach ($policy in @($p.policies)) {
+        $summary = @{ type = $policy.type; period = $policy.period; counterKey = @($policy.counterKey); scope = $policy.scope }
+        foreach ($key in @('count','amount')) { if ($policy.ContainsKey($key)) { $summary[$key] = $policy[$key] } }
+        if ($policy.ContainsKey('overrides')) { $summary.overrides = @($policy.overrides).Count }
+        $summary
+    })
+    return @{ profile = $Name; routes = $routes; maxRetryAttempts = $p.maxRetryAttempts; failures = $failures; policies = $policies }
+}
+
 function Set-DemoProfile {
     param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Profile)
     Assert-DemoGroup $Config
     $ids = Get-DemoIds $Config
-    $json = Get-Content -LiteralPath (Join-Path $script:Root "config\profiles\$Profile.json") -Raw
-    $p = $json.Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId) | ConvertFrom-Json -AsHashtable
+    $p = Read-DemoProfile $Config $Profile
     $workspace = Get-DemoArmEnvelope $ids.workspace
     $existingPolicies = if ($workspace.body.properties.ContainsKey('policies')) { @($workspace.body.properties.policies) } else { @() }
     $knownPolicies = foreach ($file in Get-ChildItem (Join-Path $script:Root 'config\profiles') -Filter '*.json') {
@@ -256,11 +291,9 @@ function Set-DemoProfile {
     }
     Set-DemoArmProperties $ids.workspace @{ policies = @($p.policies) } -Current $workspace
     foreach ($alias in @('demo-chat','demo-alt')) {
-        $targets = for ($i=0; $i -lt 2; $i++) {
-            $priority = $p.backends[$i].priority
-            if ($alias -eq 'demo-alt' -and $Profile -ne 'weighted-routing') { $priority = 1 - $priority }
-            @{ resourceId = "$($ids.workspace)/modelProviders/backend-$($i+1)/models/demo-model"
-               priority = $priority; weight = $p.backends[$i].weight }
+        $targets = foreach ($target in Get-DemoAliasTargets $p $Profile $alias) {
+            @{ resourceId = "$($ids.workspace)/modelProviders/backend-$($target.backend)/models/demo-model"
+               priority = $target.priority; weight = $target.weight }
         }
         $properties = @{
             aliasName = $alias; backendModels = @($targets); selectionOrder = @('priority')

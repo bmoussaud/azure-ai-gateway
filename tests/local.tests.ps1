@@ -226,6 +226,23 @@ Assert-Throws {
     if(-not $refused){throw 'Reset must refuse foreign endpoint mappings.'}
 }
 $script:Checks += 8
+& $module {
+    $config=@{subscriptionId='s';resourceGroupName='r';gatewayName='g';teamAObjectId='team-a-object-id-secret'}
+    $weighted=Get-DemoProfileSummary $config weighted-routing
+    foreach($route in $weighted.routes){
+        $split=@($route.targets | Where-Object { $_.priority -eq 0 } | ForEach-Object { "$($_.backend):$($_.weight)" }) -join ','
+        if($split -ne '1:80,2:20'){throw "Weighted summary must show an 80/20 split at equal priority on $($route.alias), got $split."}
+    }
+    $failover=Get-DemoProfileSummary $config failover
+    if($failover.maxRetryAttempts -ne 1 -or -not ($failover.failures | Where-Object { 404 -in $_.statusCodes -and $_.excludeSeconds -eq 30 })){
+        throw 'Failover summary must expose the attempt budget, the simulated 404 and the 30 s exclusion.'
+    }
+    $baseline=Get-DemoProfileSummary $config baseline | ConvertTo-Json -Compress -Depth 10
+    if($baseline -notlike '*"failures":`[`]*' -or $baseline -notlike '*"policies":`[`]*'){throw 'Baseline summary must serialize empty rules as arrays.'}
+    $cost=Get-DemoProfileSummary $config cost-limit | ConvertTo-Json -Compress -Depth 10
+    if($cost -like '*team-a-object-id-secret*' -or $cost -notlike '*"overrides":1*'){throw 'Browser summary must count overrides without exposing identity claims.'}
+}
+$script:Checks += 4
 Assert-Throws {
     & $module {
         function script:Get-DemoArm {
