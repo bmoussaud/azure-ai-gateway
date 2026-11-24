@@ -1,0 +1,22 @@
+{
+  "subscriptionId": "<explicit-subscription-guid>",
+  "resourceGroupName": "rg-aigw-demo-ab",
+  "location": "<verified-gateway-and-model-region>",
+  "secondaryLocation": "<verified-model-region>",
+  "monitoringLocation": "<verified-OTLP-region>",
+  "gatewayName": "<globally-unique-name>",
+  "gatewaySku": "<verified-Standard-Premium-or-Consumption>",
+  "modelName": "<available-chat-completions-model>",
+  "modelVersion": "<available-version>",
+  "deploymentName": "demo-chat-model",
+  "modelSku": "GlobalStandard",
+  "modelCapacity": 1,
+  "teamAObjectId": "<existing-workload-object-guid>",
+  "teamBObjectId": "<different-workload-object-guid>",
+  "budgetEmails": [],
+  "monthlyBudget": 20,
+  "inputUsdPerMillion": 0,
+  "outputUsdPerMillion": 0,
+  "priceSource": "<verified-price-source-and-date>",
+  "maxRunEstimatedUsd": 0.1
+}

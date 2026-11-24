@@ -1,0 +1,8 @@
+{
+  "backends": [{"priority": 0, "weight": 1}, {"priority": 1, "weight": 1}],
+  "maxRetryAttempts": 0,
+  "failures": [],
+  "policies": [
+    {"id": "demo-hour-tokens", "type": "tokenLimit", "count": 256, "period": "hour", "counterKey": ["identity"], "scope": "workspace"}
+  ]
+}

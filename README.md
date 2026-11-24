@@ -1,49 +1,37 @@
-# Démo Azure AI Foundry
+# Démo Azure AI Gateway
 
-Cette démo déploie deux projets Microsoft Foundry, `project-1` et `project-2`, chacun avec son propre déploiement `gpt-6-sol` (version `2026-09-22`). Chaque projet possède sa propre ressource Foundry : les déploiements de modèles sont en effet partagés entre les projets d'une même ressource.
+Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans service APIM classique ni policies XML. Deux modèles Azure réels derrière des alias stables, deux identités Entra A/B, routage pondéré 80/20, failover, limites de tokens et de coût, télémétrie native et Azure Monitor Workbook.
 
-## Prérequis
+**État : implémentation vérifiée localement, pas de déploiement Azure ni de preuve live.** Aucune souscription, région, capacité ou disponibilité de modèle n'est présumée. Le choix explicite d'une souscription dédiée reste nécessaire avant les contrôles Azure.
 
-- Une souscription Azure et les droits de création de ressources Cognitive Services.
-- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) avec Bicep (`az bicep install`).
-- L'accès au modèle et un quota **Global Standard** suffisant pour deux déploiements dans la région choisie. Par défaut, chacun utilise une capacité de 10 milliers de tokens par minute. La disponibilité et le quota dépendent de la souscription et de la région.
+## Utilisation
 
-Le déploiement et l'utilisation peuvent engendrer des coûts. `GlobalStandard` peut traiter les données hors de la région de la ressource. Cette démo active l'accès réseau public et désactive l'authentification par clé : utilisez Microsoft Entra ID et accordez les rôles nécessaires aux utilisateurs. Elle ne configure pas de réseau privé.
+PowerShell 7.4+, Azure CLI avec Bicep, droits de création et d'attribution RBAC, deux identités applicatives existantes et capacité de modèle vérifiée sont nécessaires.
 
-## Déploiement
+```powershell
+Copy-Item .\config\demo.example.json .\config\demo.local.json
+# Renseigner les valeurs explicites et les prix vérifiés dans ce fichier ignoré par Git.
+.\scripts\preflight.ps1 -ConfigPath .\config\demo.local.json -Offline
+.\tests\local.tests.ps1
 
-Depuis la racine du dépôt :
-
-```bash
-az login
-az account set --subscription "<subscription-id>"
-
-LOCATION="eastus"
-RESOURCE_GROUP="rg-foundry-demo"
-az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
-az deployment group create \
-  --resource-group "$RESOURCE_GROUP" \
-  --template-file infra/main.bicep \
-  --parameters location="$LOCATION"
+# Après autorisation de la cible : découverte, ARM validate et what-if sans création.
+.\scripts\deploy.ps1 -ConfigPath .\config\demo.local.json
+# Création explicite, uniquement après examen du what-if :
+.\scripts\deploy.ps1 -ConfigPath .\config\demo.local.json -Apply
 ```
 
-Le résultat `projects` contient les identifiants des projets et des ressources Foundry, les endpoints et les noms de déploiement. Le nom des ressources Foundry est généré de manière stable à partir du groupe de ressources. Pour ajuster la capacité ou la version disponible dans votre souscription, ajoutez par exemple `modelCapacity=1 modelVersion=2026-09-22` aux paramètres. Le quota total nécessaire est la somme des capacités des deux déploiements.
+Le [guide opérateur](docs/demo-guide.md) décrit l'authentification A/B, les scénarios, les assertions natives, le reset et le nettoyage. La [matrice des contrats et limites](docs/capabilities.md) distingue les capacités documentées des comportements restant à vérifier dans Azure.
 
-Pour accéder aux modèles avec Entra ID, l'utilisateur doit disposer d'un rôle de plan de données adapté, par exemple **Cognitive Services OpenAI User**, sur chaque ressource Foundry ; les droits de déploiement ne le garantissent pas. L'attribution de rôles nécessite elle-même les autorisations appropriées.
+## Garde-fous
 
-Vérifiez les ressources et déploiements :
+Les scripts ciblent explicitement une souscription et un groupe `rg-aigw-demo-*` marqué pour cette gateway. Les requêtes sont séquentielles, bornées, sans retry client, avec corrélation W3C et sans conservation des prompts, réponses ou jetons d'accès. Les compteurs utilisent l'identité authentifiée, jamais un header client libre. La configuration est relue après modification et protégée par ETag.
 
-```bash
-az deployment group show --resource-group "$RESOURCE_GROUP" --name main --query properties.outputs.projects.value
-az cognitiveservices account list --resource-group "$RESOURCE_GROUP" --output table
+Le failover utilise une **mauvaise route backend injectée pour le laboratoire**, pas une panne régionale simulée par une fonction native du produit. Le coût affiché est une estimation, pas une facture ni un plafond financier strict. Un prix manquant peut rendre la limite de coût permissive ; le runner refuse ce scénario sans preuve de tarification native complète.
+
+Le déploiement utilise des endpoints publics ; les modèles Foundry désactivent l'authentification par clé. `GlobalStandard` ne garantit pas la résidence régionale. Les ressources et leur télémétrie peuvent être facturées hors trafic : nettoyer le groupe dédié après la démo.
+
+```powershell
+.\scripts\reset-demo.ps1 -ConfigPath .\config\demo.local.json
+.\scripts\cleanup.ps1 -ConfigPath .\config\demo.local.json -WhatIf
+.\scripts\cleanup.ps1 -ConfigPath .\config\demo.local.json
 ```
-
-## Nettoyage
-
-Pour supprimer toutes les ressources de la démo, si le groupe leur est réservé :
-
-```bash
-az group delete --name "$RESOURCE_GROUP" --yes --no-wait
-```
-
-Références : [modèle GPT-6 Sol](https://ai.azure.com/catalog/models/gpt-6-sol), [projets Foundry en Bicep](https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices/2025-06-01/accounts/projects) et [planification Foundry](https://learn.microsoft.com/azure/foundry/concepts/planning).

@@ -10,6 +10,11 @@ param modelVersion string = '2026-09-22'
 @minValue(1)
 param modelCapacity int = 10
 
+param modelName string = 'gpt-6-sol'
+param deploymentName string = modelName
+param modelSku string = 'GlobalStandard'
+param secondaryLocation string = location
+
 var accountPrefix = 'foundry-${uniqueString(resourceGroup().id)}'
 
 module project1 './project.bicep' = {
@@ -20,6 +25,9 @@ module project1 './project.bicep' = {
     location: location
     modelVersion: modelVersion
     modelCapacity: modelCapacity
+    modelName: modelName
+    deploymentName: deploymentName
+    modelSku: modelSku
   }
 }
 
@@ -28,9 +36,12 @@ module project2 './project.bicep' = {
   params: {
     accountName: '${accountPrefix}-2'
     projectName: 'project-2'
-    location: location
+    location: secondaryLocation
     modelVersion: modelVersion
     modelCapacity: modelCapacity
+    modelName: modelName
+    deploymentName: deploymentName
+    modelSku: modelSku
   }
 }
 
