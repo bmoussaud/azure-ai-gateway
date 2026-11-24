@@ -10,8 +10,6 @@ param monitoringLocation string = location
 param gatewayName string
 @allowed([
   'Standard'
-  'Premium'
-  'Consumption'
 ])
 param gatewaySku string
 param modelName string
@@ -21,8 +19,10 @@ param modelSku string = 'GlobalStandard'
 @minValue(1)
 param modelCapacity int = 1
 @description('Object IDs of two distinct existing Entra workload identities, not application client IDs.')
-param teamAObjectId string
-param teamBObjectId string
+param teamAObjectId string = ''
+param teamBObjectId string = ''
+@description('Create isolated A/B user-assigned managed identities instead of using external callers.')
+param provisionDemoCallers bool = false
 @description('Optional Cost Management alert recipients. Empty disables the budget.')
 param budgetEmails array = []
 @minValue(1)
@@ -55,6 +55,19 @@ module backends './main.bicep' = {
   }
 }
 
+module callers './callers.bicep' = if (provisionDemoCallers) {
+  scope: group
+  name: 'demo-callers'
+  params: {
+    prefix: gatewayName
+    location: location
+    tags: tags
+  }
+}
+
+var callerA = provisionDemoCallers ? callers!.outputs.teams.A.principalId : teamAObjectId
+var callerB = provisionDemoCallers ? callers!.outputs.teams.B.principalId : teamBObjectId
+
 module gateway './gateway.bicep' = {
   scope: group
   name: 'demo-gateway'
@@ -67,7 +80,7 @@ module gateway './gateway.bicep' = {
       backends.outputs.projects['project-1']
       backends.outputs.projects['project-2']
     ]
-    teamObjectIds: [teamAObjectId, teamBObjectId]
+    teamObjectIds: [callerA, callerB]
   }
 }
 
@@ -103,7 +116,9 @@ output demo object = {
   workbookName: monitoring.outputs.workbookName
   insightsId: monitoring.outputs.insightsId
   metricsId: monitoring.outputs.metricsId
-  teamAObjectId: teamAObjectId
-  teamBObjectId: teamBObjectId
+  teamAObjectId: callerA
+  teamBObjectId: callerB
+  callersProvisioned: provisionDemoCallers
+  callerIdentities: provisionDemoCallers ? callers!.outputs.teams : {}
   projects: backends.outputs.projects
 }

@@ -2,7 +2,7 @@
 
 ## Acceptance status
 
-This repository contains a locally compiled/linted Bicep implementation and synthetic PowerShell tests. **It has not been deployed or exercised against Azure.** No model availability, gateway SKU acceptance, propagation time, trace shape or pricing has been observed in a target subscription. Do not present synthetic fixtures as gateway results.
+The dedicated Azure foundation was deployed on 2026-11-24 in East US 2: Standard gateway, two GPT-6 Sol `2026-09-22` GlobalStandard backends, managed callers A/B, native OTLP monitoring and Workbook. Native records verified the four baseline calls, 40/50 primary selections in the weighted run, complete failover/exclusion/all-down/recovery, and minute/hour token rejection across both aliases while B continued. All three deployed Workbook queries executed successfully. Native pricing completeness remains blocked; see the acceptance notes below. Synthetic tests are never gateway results.
 
 Use the [capability matrix](capabilities.md) for the public contracts and remaining uncertainties. The deployment entrypoint is `infra\demo.bicep`, at subscription scope. `infra\main.bicep` is its Foundry backend module, not a standalone gateway deployment.
 
@@ -18,6 +18,8 @@ Copy `config\demo.example.json` to `config\demo.local.json`. Fill every placehol
 - Verified maximum input/output USD per million tokens across both backends, source/date, and a conservative per-run estimate ceiling.
 
 The zero example prices intentionally block traffic. The model must support nonstreaming OpenAI v1 Chat Completions and `max_completion_tokens`. Both deployments use the same selected model/version. Defaults in the older backend module are not availability assertions; the gateway entrypoint supplies explicit model settings.
+
+Alternatively, set `"provisionDemoCallers": true` and remove `teamAObjectId`/`teamBObjectId` from the local configuration. Bicep then creates two dedicated user-assigned managed identities in the demo group; their resolved object IDs come from verified deployment outputs. Combining this opt-in with external caller IDs is refused.
 
 ```powershell
 Copy-Item .\config\demo.example.json .\config\demo.local.json
@@ -47,7 +49,9 @@ Bicep creates the group, two Foundry accounts/projects/model deployments, system
 
 The gateway receives Cognitive Services OpenAI User on the two backend accounts. A/B receive AI Gateway Models User on the **two aliases only**, not on the raw registered models or Foundry accounts. Test with otherwise unprivileged workloads: inherited grants can permit bypass outside this demo's boundary.
 
-Configuration profiles use the stable `2026-11-01` API. Workspace policy changes use PATCH because the default workspace is service-created. Every PATCH reads the HTTP ETag, supplies `If-Match`, and waits for matching read-back. Concurrent edits or missing ETags cause failure, not wildcard overwrites. Read-back is control-plane evidence, not proof of data-plane convergence.
+Configuration profiles use the stable `2026-11-01` API. Workspace policy changes use PATCH because the default workspace is service-created. The two demo-owned aliases use replacement PUT so resetting can remove the optional attempt budget: the live service rejects even an explicit zero budget without failure actions. Every write reads the HTTP ETag, supplies `If-Match`, and waits for matching read-back. Concurrent edits or missing ETags cause failure, not wildcard overwrites. Read-back is control-plane evidence, not proof of data-plane convergence.
+
+The qualified service omits submitted policy IDs from GET responses. Ownership is therefore checked against the exact versioned policy configuration, not an absent ID marker; unknown allowances are refused. The ownership check and PATCH use the same ETag snapshot.
 
 ## 3. Authenticate two workloads
 
@@ -63,6 +67,30 @@ if ($LASTEXITCODE -ne 0) { throw 'Workload token acquisition failed.' }
 ```
 
 Application/managed-identity scope: `https://ai.gateway.azure.com/.default`. Delegated scope: `https://ai.gateway.azure.com/Data.All` (not used by this workload demo). No subscription key is necessary. The module checks `oid`, audience and expiry locally to catch mix-ups; this is **not signature verification**. The gateway must validate the token and RBAC. Refresh tokens before long runs; a token valid for two minutes is not guaranteed to cover every bounded run.
+
+### Optional Azure-hosted managed callers
+
+For provisioned demo identities, a small ACI runner can acquire A/B tokens without secrets or local account switching:
+
+```powershell
+.\scripts\deploy-runner.ps1 -ConfigPath .\config\demo.local.json
+.\scripts\deploy-runner.ps1 -ConfigPath .\config\demo.local.json -Apply
+.\scripts\run-with-managed-callers.ps1 -ConfigPath .\config\demo.local.json -Scenario baseline
+# Correct-audience direct Foundry access must be denied for both callers:
+.\scripts\run-with-managed-callers.ps1 -ConfigPath .\config\demo.local.json -Scenario access-isolation
+```
+
+The digest-pinned Microsoft Azure CLI container has no public ingress. Its two identities have only the same alias permissions as external callers. The wrapper uses authenticated ARM exec and ACI's documented IMDS endpoint, checks credential resource/lifetime metadata and any returned client ID, keeps credentials in process memory, restores existing environment values afterward, and invokes the bounded PowerShell scenario runner locally. It is not a request proxy, retry engine or native gateway feature.
+
+The access-isolation check requests Cognitive Services tokens explicitly for each identity, rather than reusing wrong-audience gateway tokens. It requires the native `PermissionDenied` code, not just any 401/403, from both Foundry deployments. Foundry access tokens are treated as opaque; they need not have a client-readable JWT payload. Four such HTTP 401 denials were observed on the qualified target. This does not independently qualify a direct registered-model runtime route: an experimental provider-qualified model name returned 404 and was not counted as RBAC proof.
+
+Compute automatically exits after four hours. Stop it explicitly when checks are complete (substitute the actual explicit subscription/group/name):
+
+```powershell
+az container stop --subscription '<subscription-id>' --resource-group '<demo-group>' --name '<gateway-name>-runner'
+```
+
+Restart with `az container start` for another session if needed. The optional runner and provisioned demo identities are included in dedicated-group cleanup; external directory identities are never deleted.
 
 ## 4. Run and verify
 
@@ -87,17 +115,19 @@ Run one scenario at a time; the workspace configuration is shared. Each run rest
 | Cumulative tokens | `-Scenario token-quota` | Same checks with an hourly token allowance. It is not a lifetime token quota. |
 | Estimated spend | `-Scenario cost-limit -BaselineEvidencePath '.\.demo\<baseline-id>.verified.json'` | Fresh priced baseline on both backends; native metrics explicitly `price_missing=false`; A cost rejection attributed to `costLimit` while B continues. |
 
-Use the same `run-scenario.ps1` prefix with `-ConfigPath` for each suffix, then verify its actual saved result path. The default 256-token limit is illustrative: actual tokenizer/output usage can prevent exhaustion within the six-call consumption bound. The runner stops **inconclusive** instead of increasing spend. Adjust the versioned demo limit deliberately after measuring baseline, not by blindly increasing traffic.
+Use the same `run-scenario.ps1` prefix with `-ConfigPath` for each suffix, then verify its actual saved result path. Token scenarios add synthetic input markers to A's request only: 640 for the minute test and 160 for the hourly test, within the qualified model's 1,024-token input estimate. B keeps the short control prompt. Request ceilings never increase automatically. The larger minute input leaves time to demonstrate B continuing between A rejections under conservative backend pacing; the shorter input recovered before the alternate-alias probe and was not certified.
 
 Governance is per authenticated identity at **workspace** scope, shared across both aliases/backends. It is not a pooled team allowance. The cost profile renders an `oid` override for A (USD 0.0001/hour) with a larger independent B/default allowance (USD 0.1/hour). These are estimates, not exact billing.
 
-An exhausted identity can remain exhausted after reconfiguration. Start with fresh authorized workloads or wait for the applicable renewal. If a minute/hour boundary occurs during the test, rejection continuity may become inconclusive. The runner does not fake a reset.
+An exhausted identity can remain exhausted after reconfiguration. Start with fresh authorized workloads or wait for the applicable renewal. The minute test aligns its start to a UTC minute to reduce timing variation, but this is not proof of calendar-window enforcement: the service admitted a later request within that same minute in an earlier short-load test. Rejection continuity can therefore become inconclusive before a wall-clock boundary. The runner does not fake a reset or characterize an unmeasured refill algorithm.
+
+Token allowances are not strict hard ceilings. The verified hourly run accepted three 184-token A completions (552 tokens) before rejecting further A calls with the configured 256-token allowance, even with one request in flight. The verified minute run accepted one 664-token A completion, then returned native `tokenLimit` HTTP 429 on both aliases while B continued. Native accounting/admission timing can overshoot; do not promise that accepted usage stays below the configured count.
 
 ### Cost safety
 
 Cost-limit refuses traffic without a native-verified baseline from the same gateway with nonzero per-response costs on both serving backends in the last ten minutes. It also queries unaggregated native cost metric series for both aliases with complete pricing flags; missing/zero/incomplete metrics stop the scenario. It does not infer price completeness from positive costs alone.
 
-The runner limits calls (at most 12 governance, 8 failover, 200 weighted), completion tokens (64), one request in flight and **zero client retries**. Its conservative model-token estimate includes 1,024 input tokens per backend attempt and both possible failover sends, using the supplied maximum prices. It excludes gateway/monitoring/fixed charges and is not a financial guarantee.
+The runner limits calls (at most 12 governance, 8 failover, 200 weighted), completion tokens (64), one request in flight and **zero client retries**. It reads the actual deployment request/token limits and enforces monotonic minimum start-to-start spacing for the maximum input and attempt bounds, rather than adding a full delay after a slow response. The qualified capacity-10 backends allow only 10 requests/minute each; an unpaced routing test hit a real upstream 429 and was not certified. A 100-call run can therefore take more than ten minutes. Its conservative model-token estimate includes 1,024 input tokens per backend attempt and both possible failover sends, using the supplied maximum prices. It excludes gateway/monitoring/fixed charges and is not a financial guarantee.
 
 Native cost policies check recorded spend before admission and charge after completion; in-flight work can overshoot. Missing native prices can fail open. UTC calendar boundaries renew cost allowances. Never describe this as an exact invoice or strict hard budget.
 
@@ -111,7 +141,7 @@ No injector service is deployed. The runner performs no client retry or backend 
 
 Open the deployed Log Analytics resource's Workbook named **AI Gateway - teams A/B**. Its three views show native request health/latency (p50/p95), backend/token/estimated-cost usage with missing-record counts, and trace-level correlation.
 
-The KQL is versioned in `observability\requests.kql`. It uses real documented OTelSpans/OTelLogs fields, not classic APIM tables. The concrete emitted backend identifiers, error-policy span availability and W3C propagation must be verified in the target. An absent policy error span means rejection attribution remains unknown. Do not replace missing native evidence with client-side labels.
+The KQL is versioned in `observability\requests.kql`. It uses real OTelSpans/OTelLogs fields, not classic APIM tables. The deployed service emits workspace-relative backend names (`backend-1/demo-model`, `backend-2/demo-model`) and preserves incoming W3C trace IDs. Scripted queries use JSON-file REST transport to preserve multiline KQL on Windows. An absent policy error span means rejection attribution remains unknown. Do not replace missing native evidence with client-side labels.
 
 Telemetry is delayed and may be capped/dropped: the Log Analytics daily cap is 1 GB and retention 30 days. No remaining quota is invented. Payload capture is disabled. A/B labels correspond to workload object IDs, not customer data.
 
@@ -129,8 +159,12 @@ Remove-Item Env:\DEMO_TEAM_A_TOKEN, Env:\DEMO_TEAM_B_TOKEN -ErrorAction Silently
 
 Reset does not erase counters, cancel in-flight calls or immediately expire native exclusions. Wait for renewal/exclusion before repeating. Interrupted processes may not execute `finally`; reset repairs only recognized demo mappings and refuses unknown configurations.
 
-Cleanup checks subscription deployment outputs, group ownership markers and an exact resource allowlist. It refuses groups with foreign resources, then waits for group deletion. Inspect unexpected resources manually; never broaden deletion to a subscription or shared group. Directory identities are external and are not deleted. Subscription deployment history and provider-managed soft-delete retention can remain after resource-group deletion.
+Cleanup checks subscription deployment outputs, group ownership markers and an exact resource allowlist. Application Insights can automatically create a Failure Anomalies alert; cleanup accepts only its exact expected name, detector and exclusive link to this demo's component. It refuses groups with foreign resources or alerts targeting other components, then waits for group deletion. Inspect unexpected resources manually; never broaden deletion to a subscription or shared group. External directory identities are not deleted. Subscription deployment history and provider-managed soft-delete retention can remain after resource-group deletion.
 
 ## Remaining live acceptance
 
-Before calling this demo ready: authorize the subscription; pass preflight/ARM validate/what-if; deploy twice and prove idempotence; test both real workloads and denial of direct-model access; run/verify every scenario; inspect metric pricing flags and ingestion delays; exercise all-down and recovery; verify bounded spend and cleanup. Two-region resilience is a separate acceptance exercise. There are no live screenshots, fallback captures or successful Azure runs included.
+Preflight, ARM validation/what-if, infrastructure deployment and a final deployment replay succeeded. A fresh post-replay baseline was natively verified with the same hostname; baseline reapplications preserved the workspace and both alias ETags. Weighted/failover/minute/hourly acceptance, direct Foundry permission-denial checks, all three deployed Workbook queries and cleanup preview also succeeded. The optional ACI runner was explicitly stopped and its `Stopped` state read back; the gateway, backends and monitoring remain deployed.
+
+What-if could not analyze some dynamically resolved role-assignment IDs; the actual replay succeeded. Resource-group deletion was not performed merely to demonstrate cleanup. Two-region resilience, real network timeouts and the raw registered-model authorization route remain unqualified. There are no presentation screenshots or fallback captures.
+
+The actual native aggregate cost series reports `azure.ai_gateway.price_missing="true"` despite nonzero response-cost estimates. The cost guard deliberately refuses enforcement traffic under this condition; positive costs alone do not prove complete pricing. Do not remove the guard or present estimated costs as a certified hard cap.

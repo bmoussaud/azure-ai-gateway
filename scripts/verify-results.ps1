@@ -18,8 +18,8 @@ $rows = @(Invoke-DemoQuery $config $state $query)
 if ($rows.Count -ne $run.results.Count) { throw 'Inconclusive: missing/duplicate native request spans. Allow ingestion delay, then rerun verification without sending more traffic.' }
 $native = @{}
 foreach ($row in $rows) { $native[[string]$row.TraceId] = $row }
-$primary = "$($state.workspaceId)/modelProviders/backend-1/models/demo-model"
-$secondary = "$($state.workspaceId)/modelProviders/backend-2/models/demo-model"
+$primary = 'backend-1/demo-model'
+$secondary = 'backend-2/demo-model'
 foreach ($result in $run.results) {
     $row = $native[$result.traceId]
     $identity = if ($result.team -eq 'A') { $config.teamAObjectId } else { $config.teamBObjectId }
@@ -47,9 +47,7 @@ foreach ($result in $run.results) {
 if ($run.scenario -eq 'weighted-routing') {
     $n = $rows.Count
     $primaryCount = @($rows | Where-Object Backend -IEQ $primary).Count
-    $fraction = $primaryCount / $n
-    $tolerance = 4 * [Math]::Sqrt(0.8 * 0.2 / $n)
-    if ([Math]::Abs($fraction - 0.8) -gt $tolerance) { throw "Observed primary fraction $fraction is outside the configured four-sigma binomial tolerance $tolerance." }
+    $tolerance = Assert-DemoWeightedDistribution $primaryCount $n
     Write-Host "Observed native primary distribution: $primaryCount/$n; 80/20 tolerance +/- $tolerance."
 }
 $evidencePath = [IO.Path]::ChangeExtension($ResultsPath, 'verified.json')

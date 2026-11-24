@@ -25,7 +25,7 @@ $gatewayType = @($metadata.resourceTypes | Where-Object resourceType -eq 'aigate
 if ($gatewayType.Count -ne 1 -or $gatewayType[0].apiVersions -notcontains '2026-11-01') {
     throw 'The target subscription does not advertise the required stable AI Gateway API.'
 }
-$locations = Invoke-DemoAz @('account','list-locations','--subscription',$config.subscriptionId)
+$locations = (Get-DemoArm "/subscriptions/$($config.subscriptionId)/locations" '2022-12-01').value
 $region = @($locations | Where-Object name -eq $config.location)
 if ($region.Count -ne 1 -or $gatewayType[0].locations -notcontains $region[0].displayName) {
     throw 'The target subscription does not advertise AI Gateway in the selected region.'

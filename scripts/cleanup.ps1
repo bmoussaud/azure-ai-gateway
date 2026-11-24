@@ -7,6 +7,10 @@ Import-Module (Join-Path $PSScriptRoot 'Demo.psm1') -Force
 $config = Read-DemoConfig $ConfigPath
 $state = Get-DemoState $config
 $allowed = @($state.gatewayId, $state.logAnalyticsId)
+$allowed += "$($state.resourceGroupId)/providers/Microsoft.ContainerInstance/containerGroups/$($config.gatewayName)-runner"
+if ($state.ContainsKey('callerIdentities')) {
+    foreach ($identity in $state.callerIdentities.Values) { $allowed += $identity.id }
+}
 foreach ($project in $state.projects.Values) { $allowed += @($project.accountId,$project.id,$project.deploymentId) }
 $base = "$($state.resourceGroupId)/providers"
 $allowed += @(
@@ -17,6 +21,16 @@ $allowed += @(
     "$base/Microsoft.Insights/workbooks/$($state.workbookName)"
 )
 $resources = @(Invoke-DemoAz @('resource','list','--subscription',$config.subscriptionId,'--resource-group',$config.resourceGroupName))
+$generatedRuleId = "$base/Microsoft.AlertsManagement/smartDetectorAlertRules/Failure Anomalies - $($config.gatewayName)-insights"
+if (@($resources | Where-Object id -IEQ $generatedRuleId).Count) {
+    $rule = Get-DemoArm $generatedRuleId '2021-04-01'
+    $insightsId = "$base/Microsoft.Insights/components/$($config.gatewayName)-insights"
+    if ($rule.properties.detector.id -ne 'FailureAnomaliesDetector' -or
+        $rule.properties.scope.Count -ne 1 -or $rule.properties.scope[0] -ine $insightsId) {
+        throw 'Auto-generated alert is not scoped exclusively to the demo component. Cleanup refused.'
+    }
+    $allowed += $generatedRuleId
+}
 $unknown = @($resources | Where-Object { $_.id -notin $allowed })
 if ($unknown.Count) { throw "Group contains $($unknown.Count) unexpected resource(s). Cleanup refused; inspect the dedicated group." }
 if ($PSCmdlet.ShouldProcess($state.resourceGroupId, 'Delete dedicated demo resource group and all its resources')) {

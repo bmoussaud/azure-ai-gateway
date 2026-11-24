@@ -10,7 +10,7 @@ $exists = Invoke-DemoAz @('group','exists','--subscription',$config.subscription
 if ($exists) { Assert-DemoGroup $config }
 $parameters = @{}
 foreach ($key in @('resourceGroupName','location','secondaryLocation','monitoringLocation','gatewayName','gatewaySku',
-    'modelName','modelVersion','deploymentName','modelSku','modelCapacity','teamAObjectId','teamBObjectId','budgetEmails','monthlyBudget')) {
+    'modelName','modelVersion','deploymentName','modelSku','modelCapacity','teamAObjectId','teamBObjectId','provisionDemoCallers','budgetEmails','monthlyBudget')) {
     if ($config.ContainsKey($key)) { $parameters[$key] = @{ value = $config[$key] } }
 }
 $file = [IO.Path]::GetTempFileName()

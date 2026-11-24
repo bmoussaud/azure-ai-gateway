@@ -19,6 +19,17 @@ $endpoint = Get-DemoRuntimeEndpoint $state
 $requests = if ($Scenario -eq 'weighted-routing') { $Samples } elseif ($Scenario -eq 'failover') { 8 } else { 12 }
 $attempts = if ($Scenario -eq 'failover') { 2 } else { 1 }
 $estimate = Assert-DemoRunBudget $config $requests $attempts
+$delaySeconds = 0
+foreach ($project in $state.projects.Values) {
+    $deployment = Get-DemoArm $project.deploymentId '2025-06-01'
+    $limits = @($deployment.properties.rateLimits | Where-Object key -in @('request','token'))
+    if (-not @($limits | Where-Object key -eq 'request').Count) { throw 'The real backend request-rate limit must be known before traffic.' }
+    foreach ($limit in $limits) {
+        if ($limit.count -le 0 -or $limit.renewalPeriod -le 0) { throw 'Invalid live backend rate limit.' }
+        $units = if ($limit.key -eq 'token') { 1088 * $attempts } else { $attempts }
+        $delaySeconds = [Math]::Max($delaySeconds, [Math]::Ceiling($units * $limit.renewalPeriod / $limit.count))
+    }
+}
 if ($Scenario -eq 'cost-limit') {
     Assert-DemoPricing $config $state $BaselineEvidencePath
 }
@@ -29,11 +40,18 @@ $results = [Collections.Generic.List[object]]::new()
 $savedModels = @{}
 $restorationFailures = [Collections.Generic.List[string]]::new()
 $outcome = 'incomplete'
+$pacing = [Diagnostics.Stopwatch]::new()
 
 function Send-ScenarioCall([string]$Team, [string]$Alias, [string]$Phase) {
     if ($results.Count -ge $requests) { throw 'Hard request ceiling reached; do not send more traffic.' }
+    $remaining = $delaySeconds - $pacing.Elapsed.TotalSeconds
+    if ($results.Count -and $remaining -gt 0) {
+        Start-Sleep -Milliseconds ([int][Math]::Ceiling(1000 * $remaining))
+    }
     $token = if ($Team -eq 'A') { $tokenA } else { $tokenB }
-    $r = Invoke-DemoRequest $endpoint $Alias $token $Team $Phase
+    $markers = if ($Team -eq 'A' -and $Scenario -eq 'token-rate') { 640 } elseif ($Team -eq 'A' -and $Scenario -eq 'token-quota') { 160 } else { 0 }
+    $pacing.Restart()
+    $r = Invoke-DemoRequest $endpoint $Alias $token $Team $Phase -SyntheticInputMarkers $markers
     $results.Add($r)
     Write-Host ("{0} {1} {2} HTTP {3} {4:N0}ms trace={5}" -f $Phase,$Team,$Alias,$r.status,$r.latencyMs,$r.traceId)
     return $r
@@ -57,6 +75,9 @@ function Set-LabPathFault([int]$Backend) {
 
 try {
     Set-DemoProfile $config $Scenario
+    if ($Scenario -eq 'token-rate' -and [DateTimeOffset]::UtcNow.Second -gt 5) {
+        Start-Sleep -Seconds (61 - [DateTimeOffset]::UtcNow.Second)
+    }
     switch ($Scenario) {
         baseline {
             foreach ($team in @('A','B')) {
@@ -91,9 +112,10 @@ try {
             }
             if (-not $rejected) { throw 'Inconclusive: no rejection within the bounded allowance test. Do not increase traffic automatically.' }
             $retry = Send-ScenarioCall 'A' 'demo-chat' 'still-rejected'
-            $alternate = Send-ScenarioCall 'A' 'demo-alt' 'alternate-rejected'
-            if ($retry.status -lt 400 -or $alternate.status -lt 400) { throw 'Allowance was bypassed, renewed, or not yet consistently enforced.' }
+            if ($retry.status -lt 400) { throw 'Allowance was renewed or not yet consistently enforced.' }
             Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'B-continues')
+            $alternate = Send-ScenarioCall 'A' 'demo-alt' 'alternate-rejected'
+            if ($alternate.status -lt 400) { throw 'Allowance was bypassed, renewed, or not yet consistently enforced.' }
             Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'B-alternate')
         }
     }
@@ -109,6 +131,7 @@ try {
         runId=$runId; scenario=$Scenario; gatewayId=$state.gatewayId; outcome=$outcome
         startedBy='PowerShell lab runner'; concurrency=1; clientRetries=0
         conservativeTokenCostEstimateUsd=$estimate; requestCeiling=$requests
+        minimumInterRequestSpacingSeconds=$delaySeconds
         restorationFailures=@($restorationFailures); results=@($results.ToArray())
     } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $resultPath
     Write-Host "HTTP observations saved: $resultPath. Not a native gateway proof until verify-results.ps1 succeeds."

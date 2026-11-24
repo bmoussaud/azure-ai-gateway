@@ -18,7 +18,7 @@ Do not substitute preview sample payloads: stable providers use `modelProviderTy
 
 | Area | Qualified public contract / implementation | Remaining qualification |
 |---|---|---|
-| Resource | System-assigned `aigateways`, SKU selectors Standard/Premium/Consumption, service-assigned frontend hostname. | Subscription entitlement, selected SKU, regional availability and billing. |
+| Resource | System-assigned `aigateways`, **Standard** SKU, service-assigned frontend hostname. Live ARM creation rejected Consumption with `InvalidSkuName`: "The supported AI Gateway SKU name is 'Standard'." Generic CLI SKU options are not a native-product guarantee. | Subscription entitlement, regional availability and billing. |
 | Regions | Gateway docs advertise australiaeast, canadaeast, centralus, eastus, eastus2, francecentral, japaneast, northcentralus, northeurope, southcentralus, southeastasia, swedencentral, uksouth, westeurope, westus, westus2. | Provider metadata in the chosen subscription takes precedence. OTLP/model region support is separate. |
 | Backend | Two real AIServices accounts, each with a project and parameterized OpenAI deployment. Managed identity; local account keys disabled. | Model/version/SKU/capacity and v1 Chat Completions compatibility. GlobalStandard is not regional residency. |
 | Providers/models | Foundry endpoint object, `resourceIds`, managed-identity audience; deployment ARM ID/provider model name/version; explicit API-to-path mapping. | Actual path behavior, Entra backend authorization and control/data-plane convergence. |
@@ -32,7 +32,7 @@ Do not substitute preview sample payloads: stable providers use `modelProviderTy
 | Cost alert | Optional monthly resource-group Cost Management budget/80% alert. | Offer/permission eligibility and asynchronous notification delivery; not enforcement. |
 | Native telemetry | OTLP MI exporter, payload off, explicit `tid`/`oid`, Azure Monitor DCE/DCR and native OTLP tables. | Actual ingestion, latency, resource attributes, span propagation and label availability. |
 | Workbook | Native request health, attributed/unattributed errors, latency, serving backend, tokens, estimated USD, correlation and missing fields. | Query behavior on actual emitted records; no invented remaining allowance. |
-| IaC/config | Bicep resources, versioned JSON profiles, ETag PATCH/read-back, dedicated ownership guards and exact cleanup allowlist. | ARM validate/what-if, live replay idempotence and cleanup. |
+| IaC/config | Bicep resources, versioned JSON profiles, ETag PUT/PATCH/read-back, dedicated ownership guards and exact cleanup allowlist. Aliases omit the attempt budget when there are no failure actions, including zero. | ARM validate/what-if, live replay idempotence and cleanup. |
 
 ## Counter boundary
 
@@ -46,7 +46,7 @@ The intended security boundary excludes additional gateways, direct Foundry acce
 
 The shared query uses `ResourceAttributes["cloud.resource_id"]`, `TraceId`, server span `DurationMs`, `StatusCode`, `http.response.status_code` and exported `azure.ai_gateway.identity.claims.oid`. Logs supply `gen_ai.request.model`, `azure.ai_gateway.client.usage.total_tokens` and `azure.ai_gateway.client.token.cost`; routing spans supply `azure.ai_gateway.routing.backend` and `.attempt`.
 
-Error attribution requires an error policy span carrying `azure.ai_gateway.policy.type`. If that detail is not emitted, the verifier refuses to certify token/cost rejection origin from HTTP status alone. The emitted serving-backend representation must match the model ARM IDs used in the assertions; inspect actual records before adapting any mapping.
+Error attribution requires an error policy span carrying `azure.ai_gateway.policy.type`. If that detail is not emitted, the verifier refuses to certify token/cost rejection origin from HTTP status alone. The live service emits workspace-relative serving backend names (`backend-1/demo-model`, `backend-2/demo-model`), which the assertions match within the selected gateway's native records.
 
 Native cost metric `azure.ai_gateway.client.token.cost` carries `azure.ai_gateway.price_missing`. The pricing guard queries dotted OpenTelemetry metric/label names through PromQL, selects no `gen_ai.token.type` breakdown and requires explicit `"false"` on every returned aggregate series. Absence of the flag is unknown. The two aliases' fresh native baseline traces prove their different backends; a summed positive cost alone cannot prove both prices.
 
@@ -54,4 +54,14 @@ Native cost metric `azure.ai_gateway.client.token.cost` carries `azure.ai_gatewa
 
 `tests\local.tests.ps1` uses synthetic JSON/JWT/ARM fixtures and a loopback HTTP 503 server. It checks safety boundaries, identity mix-ups, idempotent ETag updates, workspace counter scope, cost completeness refusal, endpoint discovery, cleanup refusal and the client's nonstreaming/no-retry/sanitized result behavior. It makes no Azure calls.
 
-No Azure deployment, inference, telemetry, what-if, ARM validation or cost enforcement result is claimed. No subscription was selected. Use the operator guide's live acceptance checklist before a presentation.
+On 2026-11-24, preflight, ARM validation/what-if and actual deployment succeeded in East US 2 with Standard and GPT-6 Sol `2026-09-22` GlobalStandard capacity 10 per backend. Four real baseline completions (A/B through both aliases) were verified against native trace IDs, identities, status and backends. Native records show 17 tokens and USD 0.000066 per baseline completion, with ingestion delayed by minutes.
+
+The paced routing run completed 50 real calls: native backend spans show 40 primary and 10 secondary (80/20), not a client-generated distribution. Both identities also received native `PermissionDenied` responses (HTTP 401) from both Foundry deployments using the correct Cognitive Services audience. An unqualified direct registered-model name returning 404 was not counted as authorization proof. Cleanup preview succeeded without deleting the environment, including verification of the service-generated Failure Anomalies alert's exact component scope.
+
+Native failover verification confirmed two backend sends on failover, one while the primary was excluded, visible all-down HTTP 503, and recovery of both backends. All three queries extracted from the deployed Workbook executed successfully against actual native records.
+
+The hourly token run verified native `tokenLimit` rejections (HTTP 403) for A on both aliases while B continued. Three accepted A completions consumed 552 tokens before further admission was refused against a configured 256-token allowance; this is not a strict hard token ceiling. The final minute run accepted 664 A tokens, then verified native HTTP 429 `tokenLimit` rejections on both aliases with B continuing between A rejections. Earlier short-input minute tests recovered before the alternate-alias check, including within the same UTC minute; no precise refill algorithm or cross-alias bypass is inferred from those incomplete runs.
+
+The aggregate native cost metric currently marks pricing incomplete (`price_missing="true"`). A fresh, natively verified baseline followed by the real guard confirmed cost-enforcement traffic is refused, even though estimated costs are nonzero. The pinned native registered-model schema exposes no price override; the guard is not bypassed. An initial unpaced weighted test hit a genuine upstream 429; the runner now derives monotonic start-to-start spacing from actual ARM deployment limits rather than assuming throughput from SKU/capacity. Other scenario results must be qualified independently.
+
+A final infrastructure replay passed preflight, ARM validation/what-if and deployment. Some dynamic role-assignment IDs were unanalysable by what-if, not silently reported as no-op. The actual replay retained the endpoint, then a fresh baseline passed native verification; its baseline configuration reapplications left all workspace/alias ETags unchanged. ACI compute was explicitly stopped and read back as `Stopped`; the demo foundation remains deployed. Deletion, regional disaster recovery and real network timeout behavior were not tested.

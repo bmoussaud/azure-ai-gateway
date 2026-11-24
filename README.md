@@ -2,11 +2,11 @@
 
 Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans service APIM classique ni policies XML. Deux modèles Azure réels derrière des alias stables, deux identités Entra A/B, routage pondéré 80/20, failover, limites de tokens et de coût, télémétrie native et Azure Monitor Workbook.
 
-**État : implémentation vérifiée localement, pas de déploiement Azure ni de preuve live.** Aucune souscription, région, capacité ou disponibilité de modèle n'est présumée. Le choix explicite d'une souscription dédiée reste nécessaire avant les contrôles Azure.
+**État : déployé et vérifié dans Azure : baseline A/B, routage 40/50–10/50, failover/récupération et limites de tokens minute/heure.** La limite de coût reste bloquée par le signal natif de tarification incomplète ; elle n'est pas certifiée. Pour une nouvelle cible, aucune région, capacité ou disponibilité de modèle n'est présumée.
 
 ## Utilisation
 
-PowerShell 7.4+, Azure CLI avec Bicep, droits de création et d'attribution RBAC, deux identités applicatives existantes et capacité de modèle vérifiée sont nécessaires.
+PowerShell 7.4+, Azure CLI avec Bicep, droits de création et d'attribution RBAC et capacité de modèle vérifiée sont nécessaires. Utiliser deux identités applicatives existantes ou activer `provisionDemoCallers` pour créer des identités managées A/B dédiées.
 
 ```powershell
 Copy-Item .\config\demo.example.json .\config\demo.local.json

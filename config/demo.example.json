@@ -5,7 +5,7 @@
   "secondaryLocation": "<verified-model-region>",
   "monitoringLocation": "<verified-OTLP-region>",
   "gatewayName": "<globally-unique-name>",
-  "gatewaySku": "<verified-Standard-Premium-or-Consumption>",
+  "gatewaySku": "Standard",
   "modelName": "<available-chat-completions-model>",
   "modelVersion": "<available-version>",
   "deploymentName": "demo-chat-model",

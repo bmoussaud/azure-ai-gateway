@@ -88,11 +88,10 @@ resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-
     aliasName: alias
     backendModels: [for (project, i) in projects: {
       resourceId: resourceId('Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models', gatewayName, 'default', 'backend-${i + 1}', 'demo-model')
-      priority: i
+      priority: alias == 'demo-alt' ? 1 - i : i
       weight: 1
     }]
     selectionOrder: ['priority']
-    maxRetryAttempts: 0
     failures: []
     policies: []
   }

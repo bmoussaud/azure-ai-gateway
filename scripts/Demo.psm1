@@ -7,21 +7,34 @@ $script:ApiVersion = '2026-11-01'
 function Read-DemoConfig {
     param([Parameter(Mandatory)][string]$Path)
     $c = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
-    foreach ($key in @('subscriptionId', 'resourceGroupName', 'location', 'secondaryLocation', 'monitoringLocation',
+    if ($c.ContainsKey('provisionDemoCallers') -and $c.provisionDemoCallers -isnot [bool]) {
+        throw 'provisionDemoCallers must be a JSON boolean.'
+    }
+    $managed = $c.ContainsKey('provisionDemoCallers') -and $c.provisionDemoCallers
+    $required = @('subscriptionId', 'resourceGroupName', 'location', 'secondaryLocation', 'monitoringLocation',
         'gatewayName', 'gatewaySku', 'modelName', 'modelVersion', 'deploymentName', 'modelSku',
-        'modelCapacity', 'teamAObjectId', 'teamBObjectId')) {
+        'modelCapacity')
+    if (-not $managed) { $required += @('teamAObjectId','teamBObjectId') }
+    foreach ($key in $required) {
         if (-not $c.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$c[$key]) -or [string]$c[$key] -match '[<>]') {
             throw "Supply an explicit $key in the local config."
         }
     }
-    foreach ($key in @('subscriptionId', 'teamAObjectId', 'teamBObjectId')) {
+    $guidKeys = @('subscriptionId')
+    if (-not $managed) { $guidKeys += @('teamAObjectId','teamBObjectId') }
+    foreach ($key in $guidKeys) {
         $id = [guid]::Empty
         if (-not [guid]::TryParse($c[$key], [ref]$id) -or $id -eq [guid]::Empty) { throw "$key must be a nonempty GUID." }
     }
-    if ($c.teamAObjectId -eq $c.teamBObjectId) { throw 'Teams A and B require distinct workload identities.' }
+    if (-not $managed -and $c.teamAObjectId -eq $c.teamBObjectId) { throw 'Teams A and B require distinct workload identities.' }
+    if ($managed) {
+        foreach ($key in @('teamAObjectId','teamBObjectId')) {
+            if ($c.ContainsKey($key) -and $c[$key]) { throw 'Do not combine external caller IDs with provisionDemoCallers.' }
+        }
+    }
     if ($c.resourceGroupName -cnotmatch '^rg-aigw-demo-[a-z0-9-]+$') { throw 'Use a dedicated rg-aigw-demo-* group.' }
     if ($c.gatewayName -cnotmatch '^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$') { throw 'Invalid gateway name.' }
-    if ($c.gatewaySku -cnotin @('Standard', 'Premium', 'Consumption')) { throw 'Unsupported gateway SKU selector.' }
+    if ($c.gatewaySku -cne 'Standard') { throw 'The native AI Gateway resource currently requires the Standard SKU.' }
     if ([int]$c.modelCapacity -lt 1) { throw 'modelCapacity must be positive.' }
     return $c
 }
@@ -64,6 +77,9 @@ function Test-DemoSubset {
     if ($Expected -is [System.Collections.IDictionary]) {
         if ($Actual -isnot [System.Collections.IDictionary]) { return $false }
         foreach ($key in $Expected.Keys) {
+            if ($key -eq 'policies' -and $Expected[$key] -is [array] -and $Expected[$key].Count -eq 0 -and -not $Actual.Contains($key)) { continue }
+            if ($key -eq 'id' -and -not $Actual.Contains($key) -and $Expected.Contains('type') -and
+                $Expected.type -in @('tokenLimit','costLimit') -and $Expected.id -like 'demo-*') { continue }
             if (-not $Actual.Contains($key) -or -not (Test-DemoSubset $Expected[$key] $Actual[$key])) { return $false }
         }
         return $true
@@ -79,13 +95,13 @@ function Test-DemoSubset {
 }
 
 function Set-DemoArmProperties {
-    param([string]$Id, [hashtable]$Properties)
-    $current = Get-DemoArmEnvelope $Id
+    param([string]$Id, [hashtable]$Properties, [ValidateSet('patch','put')][string]$Method = 'patch', [hashtable]$Current)
+    if (-not $Current) { $Current = Get-DemoArmEnvelope $Id }
     if (Test-DemoSubset $Properties $current.body.properties) { return }
     $file = [IO.Path]::GetTempFileName()
     try {
         @{ properties = $Properties } | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $file
-        $null = Invoke-DemoAz @('rest', '--subscription', ($Id -split '/')[2], '--method', 'patch', '--url', "https://management.azure.com${Id}?api-version=$script:ApiVersion",
+        $null = Invoke-DemoAz @('rest', '--subscription', ($Id -split '/')[2], '--method', $Method, '--url', "https://management.azure.com${Id}?api-version=$script:ApiVersion",
             '--headers', "If-Match=$($current.etag)", '--body', "@$file")
         for ($i = 0; $i -lt 30; $i++) {
             $read = Get-DemoArm $Id
@@ -118,6 +134,17 @@ function Get-DemoState {
     if (-not $state -or $state.gatewayId -ine $ids.gateway -or $state.resourceGroupId -ine $ids.group) {
         throw 'Missing or mismatched subscription deployment outputs.'
     }
+    if ($Config.ContainsKey('provisionDemoCallers') -and $Config.provisionDemoCallers) {
+        if (-not $state.callersProvisioned) { throw 'The deployed environment did not provision dedicated callers.' }
+        foreach ($team in @('A','B')) {
+            $identity = $state.callerIdentities[$team]
+            $expectedId = "$($ids.group)/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$($Config.gatewayName)-team-$($team.ToLowerInvariant())"
+            if ($identity.id -ine $expectedId -or $identity.principalId -ine $state["team${team}ObjectId"]) {
+                throw 'Dedicated caller identity outputs do not match this demo.'
+            }
+            $Config["team${team}ObjectId"] = $identity.principalId
+        }
+    }
     if ($state.teamAObjectId -ine $Config.teamAObjectId -or $state.teamBObjectId -ine $Config.teamBObjectId) {
         throw 'Configuration caller identities differ from the deployed identities.'
     }
@@ -126,20 +153,25 @@ function Get-DemoState {
 
 function Get-DemoRuntimeEndpoint {
     param([hashtable]$State)
+    if ($State.hostname -cnotmatch '^[a-zA-Z0-9.-]+$') { throw 'Invalid service-assigned gateway hostname.' }
     $paths = @()
     $first = $true
     foreach ($alias in @('demo-chat','demo-alt')) {
         $resource = Get-DemoArm "$($State.workspaceId)/aliases/$alias"
-        $supported = @($resource.properties.supportedEndpoints | Where-Object {
-            $_ -cmatch '^/[a-zA-Z0-9/_-]+/chat/completions$' -and $_ -notmatch '//'
-        })
+        $supported = @($resource.properties.gatewayEndpoints | Where-Object {
+            $url = $null
+            $_.api -ceq 'v1/chat/completions' -and [uri]::TryCreate($_.url, [UriKind]::Absolute, [ref]$url) -and
+                $url.Scheme -eq 'https' -and $url.Host -ieq $State.hostname -and $url.IsDefaultPort -and
+                -not $url.UserInfo -and -not $url.Query -and -not $url.Fragment -and
+                $url.AbsolutePath -cmatch '^/default/models/[a-zA-Z0-9/_-]+/chat/completions$' -and
+                $url.AbsolutePath -notmatch '//'
+        } | ForEach-Object url)
         $paths = if ($first) { $supported } else { @($paths | Where-Object { $_ -cin $supported }) }
         $first = $false
     }
     $common = @($paths | Select-Object -Unique)
     if ($common.Count -ne 1) { throw 'Both aliases must advertise one unambiguous common Chat Completions path.' }
-    if ($State.hostname -cnotmatch '^[a-zA-Z0-9.-]+$') { throw 'Invalid service-assigned gateway hostname.' }
-    return "https://$($State.hostname)/default/models$($common[0])"
+    return $common[0]
 }
 
 function Reset-DemoLabFaults {
@@ -162,11 +194,28 @@ function Set-DemoProfile {
     $ids = Get-DemoIds $Config
     $json = Get-Content -LiteralPath (Join-Path $script:Root "config\profiles\$Profile.json") -Raw
     $p = $json.Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId) | ConvertFrom-Json -AsHashtable
-    $workspace = Get-DemoArm $ids.workspace
-    $existingPolicies = if ($workspace.properties.ContainsKey('policies')) { @($workspace.properties.policies) } else { @() }
-    $foreign = @($existingPolicies | Where-Object { -not $_.ContainsKey('id') -or $_.id -notlike 'demo-*' })
-    if ($foreign.Count) { throw 'Unexpected workspace policies: refusing to replace another configuration.' }
-    Set-DemoArmProperties $ids.workspace @{ policies = @($p.policies) }
+    $workspace = Get-DemoArmEnvelope $ids.workspace
+    $existingPolicies = if ($workspace.body.properties.ContainsKey('policies')) { @($workspace.body.properties.policies) } else { @() }
+    $knownPolicies = foreach ($file in Get-ChildItem (Join-Path $script:Root 'config\profiles') -Filter '*.json') {
+        $profileJson = (Get-Content -LiteralPath $file.FullName -Raw).Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId)
+        ($profileJson | ConvertFrom-Json -AsHashtable).policies
+    }
+    foreach ($existing in $existingPolicies) {
+        $known = $false
+        foreach ($candidate in $knownPolicies) {
+            $expectedPolicy = $candidate.Clone()
+            $actualPolicy = $existing.Clone()
+            if ($actualPolicy.ContainsKey('id') -and $actualPolicy.id -cne $expectedPolicy.id) { continue }
+            $expectedPolicy.Remove('id')
+            $actualPolicy.Remove('id')
+            if ((Test-DemoSubset $expectedPolicy $actualPolicy) -and (Test-DemoSubset $actualPolicy $expectedPolicy)) {
+                $known = $true
+                break
+            }
+        }
+        if (-not $known) { throw 'Unexpected workspace policies: refusing to replace another configuration.' }
+    }
+    Set-DemoArmProperties $ids.workspace @{ policies = @($p.policies) } -Current $workspace
     foreach ($alias in @('demo-chat','demo-alt')) {
         $targets = for ($i=0; $i -lt 2; $i++) {
             $priority = $p.backends[$i].priority
@@ -174,17 +223,36 @@ function Set-DemoProfile {
             @{ resourceId = "$($ids.workspace)/modelProviders/backend-$($i+1)/models/demo-model"
                priority = $priority; weight = $p.backends[$i].weight }
         }
-        Set-DemoArmProperties "$($ids.workspace)/aliases/$alias" @{
+        $properties = @{
             aliasName = $alias; backendModels = @($targets); selectionOrder = @('priority')
-            maxRetryAttempts = $p.maxRetryAttempts; failures = @($p.failures); policies = @()
+            failures = @($p.failures); policies = @()
+        }
+        if ($p.failures.Count) { $properties.maxRetryAttempts = $p.maxRetryAttempts }
+        Set-DemoArmProperties "$($ids.workspace)/aliases/$alias" $properties -Method put
+        $read = Get-DemoArm "$($ids.workspace)/aliases/$alias"
+        if (-not $p.failures.Count -and $read.properties.ContainsKey('maxRetryAttempts') -and $read.properties.maxRetryAttempts -gt 0) {
+            throw 'Alias replacement did not clear the previous attempt budget.'
         }
     }
 }
 
 function Invoke-DemoQuery {
     param([hashtable]$Config, [hashtable]$State, [string]$Query)
-    return Invoke-DemoAz @('monitor','log-analytics','query','--subscription',$Config.subscriptionId,
-        '--workspace',$State.logAnalyticsCustomerId,'--analytics-query',$Query,'--timespan','PT1H')
+    $file = [IO.Path]::GetTempFileName()
+    try {
+        @{query=$Query;timespan='PT1H'} | ConvertTo-Json | Set-Content -LiteralPath $file
+        $response = Invoke-DemoAz @('rest','--subscription',$Config.subscriptionId,'--method','post',
+            '--resource','https://api.loganalytics.io','--url',"https://api.loganalytics.azure.com/v1/workspaces/$($State.logAnalyticsCustomerId)/query",
+            '--body',"@$file")
+        if ($response.ContainsKey('error') -or $response.tables.Count -ne 1) { throw 'Native telemetry query returned an incomplete or unexpected result.' }
+        $table = $response.tables[0]
+        foreach ($row in $table.rows) {
+            if ($row.Count -ne $table.columns.Count) { throw 'Native telemetry query returned a malformed row.' }
+            $record = @{}
+            for ($i=0; $i -lt $table.columns.Count; $i++) { $record[$table.columns[$i].name] = $row[$i] }
+            $record
+        }
+    } finally { Remove-Item -LiteralPath $file -Force }
 }
 
 function Assert-DemoPricingSeries {
@@ -250,7 +318,7 @@ function Get-DemoToken {
         $claims.aud -notin @('https://ai.gateway.azure.com', 'https://ai.gateway.azure.com/', '18550318-e177-4205-a743-6816d6fcdc3f')) {
         throw "Team $Team token has the wrong identity, audience, or expiry."
     }
-    # This is a local mix-up check, not token validation; the gateway verifies the signature.
+    # This is a local mix-up check, not token validation; the target service verifies the signature.
     return $token
 }
 
@@ -269,8 +337,19 @@ function Assert-DemoRunBudget {
     return $estimate
 }
 
+function Assert-DemoWeightedDistribution {
+    param([int]$PrimaryCount, [ValidateRange(50,200)][int]$Total)
+    if ($PrimaryCount -le 0 -or $PrimaryCount -ge $Total) { throw 'Weighted routing must demonstrate both configured serving backends.' }
+    $tolerance = 4 * [Math]::Sqrt(0.8 * 0.2 / $Total)
+    if ([Math]::Abs($PrimaryCount / $Total - 0.8) -gt $tolerance) {
+        throw "Observed primary fraction is outside the four-sigma binomial tolerance $tolerance."
+    }
+    return $tolerance
+}
+
 function Invoke-DemoRequest {
-    param([string]$Endpoint, [string]$Alias, [string]$Token, [string]$Team, [string]$Phase)
+    param([string]$Endpoint, [string]$Alias, [string]$Token, [string]$Team, [string]$Phase,
+        [ValidateRange(0,640)][int]$SyntheticInputMarkers = 0)
     $traceId = [guid]::NewGuid().ToString('N')
     $spanId = [guid]::NewGuid().ToString('N').Substring(0,16)
     $client = [Net.Http.HttpClient]::new()
@@ -278,7 +357,9 @@ function Invoke-DemoRequest {
     $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, $Endpoint)
     $request.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $Token)
     $request.Headers.Add('traceparent', "00-$traceId-$spanId-01")
-    $body = @{ model = $Alias; messages = @(@{ role='user'; content='Reply with the single word OK.' })
+    $prompt = 'Reply with the single word OK.'
+    if ($SyntheticInputMarkers) { $prompt += ' Ignore these synthetic capacity markers: ' + ('marker ' * $SyntheticInputMarkers) }
+    $body = @{ model = $Alias; messages = @(@{ role='user'; content=$prompt })
         max_completion_tokens = 64; stream = $false } | ConvertTo-Json -Depth 8 -Compress
     $request.Content = [Net.Http.StringContent]::new($body, [Text.Encoding]::UTF8, 'application/json')
     $timer = [Diagnostics.Stopwatch]::StartNew()
@@ -286,9 +367,15 @@ function Invoke-DemoRequest {
         $response = $client.SendAsync($request).GetAwaiter().GetResult()
         try {
             $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-            $parsed = $null
-            try { $parsed = $text | ConvertFrom-Json -AsHashtable }
-            catch { throw "Non-JSON gateway response, HTTP $([int]$response.StatusCode), trace $traceId." }
+            $parsed = @{}
+            $format = 'empty'
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                try {
+                    $value = $text | ConvertFrom-Json -AsHashtable
+                    if ($value -is [hashtable]) { $parsed = $value; $format = 'json-object' }
+                    else { $format = 'json-non-object' }
+                } catch { $format = 'non-json' }
+            }
             $usage = if ($parsed.ContainsKey('usage')) { $parsed.usage } else { $null }
             $errorCode = if ($parsed.ContainsKey('error') -and $parsed.error -is [hashtable] -and $parsed.error.ContainsKey('code')) {
                 [string]$parsed.error.code
@@ -301,7 +388,7 @@ function Invoke-DemoRequest {
                 time = [DateTimeOffset]::UtcNow.ToString('o'); traceId=$traceId; team=$Team; alias=$Alias; phase=$Phase
                 status=[int]$response.StatusCode; latencyMs=$timer.Elapsed.TotalMilliseconds
                 usage=$usage; errorCode=$errorCode
-                completion=$hasCompletion
+                completion=$hasCompletion; responseFormat=$format
             }
         } finally { $response.Dispose() }
     } catch {

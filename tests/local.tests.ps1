@@ -23,8 +23,16 @@ foreach ($file in Get-ChildItem (Join-Path $root 'scripts') -File | Where-Object
 Assert-True ($parseFailures.Count -eq 0) ($parseFailures -join "`n")
 Assert-True (Test-DemoSubset @{ policies=@(@{ id='p'; count=10 }) } @{ etag='x'; policies=@(@{ count=10; id='p'; scope='workspace' }) }) 'Read-back subset should ignore provider-added fields.'
 Assert-True (-not (Test-DemoSubset @{ policies=@() } @{ policies=@(@{id='p'}) })) 'Removing a policy must not be a no-op.'
+Assert-True (Test-DemoSubset @{policies=@()} @{}) 'The live native alias API omits empty optional policy arrays.'
+Assert-True (-not (Test-DemoSubset @{policies=@(@{id='p'})} @{})) 'Missing policies must not match a nonempty policy configuration.'
+Assert-True (-not (Test-DemoSubset @{backendModels=@()} @{})) 'Only the known optional empty policy field may be omitted.'
+Assert-True (Test-DemoSubset @{policies=@(@{id='demo-test';type='tokenLimit';count=256})} @{policies=@(@{type='tokenLimit';count=256})}) 'Live native policy responses omit the submitted policy ID.'
+Assert-True (-not (Test-DemoSubset @{policies=@(@{id='demo-test';type='tokenLimit';count=256})} @{policies=@(@{type='tokenLimit';count=257})})) 'An omitted policy ID must not hide a changed allowance.'
 Assert-True (-not (Test-DemoSubset @{ backends=@('a','b') } @{ backends=@('b','a') })) 'Routing order is significant.'
 Assert-True (-not (Test-DemoSubset @{ count=10 } @{ count=11 })) 'Changed allowance must be detected.'
+Assert-Throws {Assert-DemoWeightedDistribution 50 50} 'The small-sample tolerance must not certify traffic served by only one backend.'
+Assert-Throws {Assert-DemoWeightedDistribution 10 100} 'A materially incorrect routing distribution must be refused.'
+Assert-True ((Assert-DemoWeightedDistribution 80 100) -gt 0) 'A representative 80/20 distribution should pass.'
 
 $c = @{
     subscriptionId='11111111-1111-1111-1111-111111111111'; resourceGroupName='rg-aigw-demo-local'
@@ -49,6 +57,15 @@ try {
     $bad = $c.Clone(); $bad.teamBObjectId=$bad.teamAObjectId
     $bad | ConvertTo-Json | Set-Content -LiteralPath $temp
     Assert-Throws { Read-DemoConfig $temp } 'Identical A/B principals must be refused.'
+    $bad=$c.Clone();$bad.gatewaySku='Consumption'
+    $bad|ConvertTo-Json|Set-Content -LiteralPath $temp
+    Assert-Throws {Read-DemoConfig $temp} 'Generic APIM SKU options must not bypass the native Standard-only gateway contract.'
+    $managed=$c.Clone();$managed.Remove('teamAObjectId');$managed.Remove('teamBObjectId');$managed.provisionDemoCallers=$true
+    $managed|ConvertTo-Json|Set-Content -LiteralPath $temp
+    Assert-True ((Read-DemoConfig $temp).provisionDemoCallers) 'Dedicated callers must be an explicit opt-in.'
+    $managed.teamAObjectId=$c.teamAObjectId
+    $managed|ConvertTo-Json|Set-Content -LiteralPath $temp
+    Assert-Throws {Read-DemoConfig $temp} 'Provisioned callers must not silently replace supplied external identities.'
 
     $payload = @{ oid=$c.teamAObjectId; aud='https://ai.gateway.azure.com'; exp=[DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds() } | ConvertTo-Json -Compress
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd('=').Replace('+','-').Replace('/','_')
@@ -78,6 +95,21 @@ try {
     $env:DEMO_TEAM_A_TOKEN=$oldTokenA
     Remove-Item -LiteralPath $temp -Force
 }
+
+& $module {
+    $script:ExpectedQuery = "let Value = 'quoted';`nprint Result=Value"
+    function script:Invoke-DemoAz {
+        param([string[]]$Arguments)
+        $body=Get-Content -LiteralPath $Arguments[-1].Substring(1) -Raw|ConvertFrom-Json -AsHashtable
+        if($body.query -cne $script:ExpectedQuery -or $body.timespan -ne 'PT1H'){
+            throw 'KQL must reach the native query endpoint with quotes and line breaks intact.'
+        }
+        return @{tables=@(@{columns=@(@{name='Result'});rows=@(,@('native-shape'))})}
+    }
+    $rows=@(Invoke-DemoQuery @{subscriptionId='s'} @{logAnalyticsCustomerId='w'} $script:ExpectedQuery)
+    if($rows.Count -ne 1 -or $rows[0].Result -ne 'native-shape'){throw 'Native table columns must map to the corresponding row values.'}
+}
+$script:Checks++
 
 & $module {
     $script:Writes=0
@@ -129,9 +161,13 @@ Assert-Throws {
 
 & $module {
     function script:Assert-DemoGroup {}
-    function script:Get-DemoArm { param($Id); return @{properties=@{policies=@();supportedEndpoints=@('/openai/v1/chat/completions')}} }
+    function script:Get-DemoArm { param($Id); return @{properties=@{policies=@();supportedEndpoints=@('v1/chat/completions');gatewayEndpoints=@(@{
+        api='v1/chat/completions';url='https://assigned.example.test/default/models/openai/v1/chat/completions'
+    })}} }
+    function script:Get-DemoArmEnvelope { param($Id); return @{body=(Get-DemoArm $Id);etag='"revision-1"'} }
     $script:ProfileWrites=@{}
-    function script:Set-DemoArmProperties { param($Id,$Properties); $script:ProfileWrites[$Id]=$Properties }
+    $script:ProfileMethods=@{}
+    function script:Set-DemoArmProperties { param($Id,$Properties,$Method,$Current); $script:ProfileWrites[$Id]=$Properties; $script:ProfileMethods[$Id]=$Method }
     $config=@{subscriptionId='s';resourceGroupName='r';gatewayName='g';teamAObjectId='a'}
     Set-DemoProfile $config token-rate
     $ids=Get-DemoIds $config
@@ -141,6 +177,10 @@ Assert-Throws {
     }
     if ($script:ProfileWrites["$($ids.workspace)/aliases/demo-alt"].backendModels[0].priority -ne 1) {
         throw 'The alternate alias must prove non-bypass through the other preferred backend.'
+    }
+    if ($script:ProfileWrites["$($ids.workspace)/aliases/demo-chat"].ContainsKey('maxRetryAttempts') -or
+        $script:ProfileMethods["$($ids.workspace)/aliases/demo-chat"] -ne 'put') {
+        throw 'Disabled failure actions must omit the attempt budget and replace the old alias configuration.'
     }
     Set-DemoProfile $config cost-limit
     if ($script:ProfileWrites[$ids.workspace].policies[0].overrides[0].claims[0].value -ne 'a') {
@@ -152,8 +192,10 @@ Assert-Throws {
     }
     function script:Get-DemoArm {
         param($Id)
-        $paths=if($Id.EndsWith('demo-chat')){@()}else{@('/openai/v1/chat/completions')}
-        return @{properties=@{supportedEndpoints=$paths}}
+        $paths=if($Id.EndsWith('demo-chat')){@()}else{@(@{
+            api='v1/chat/completions';url='https://assigned.example.test/default/models/openai/v1/chat/completions'
+        })}
+        return @{properties=@{gatewayEndpoints=$paths}}
     }
     $refused=$false
     try { Get-DemoRuntimeEndpoint @{workspaceId='/synthetic';hostname='assigned.example.test'} }
@@ -172,7 +214,38 @@ Assert-Throws {
     catch { $refused=$_.Exception.Message -like 'Unexpected model mapping*' }
     if(-not $refused){throw 'Reset must refuse foreign endpoint mappings.'}
 }
-$script:Checks += 7
+$script:Checks += 8
+Assert-Throws {
+    & $module {
+        function script:Get-DemoArm {
+            return @{properties=@{policies=@(@{type='tokenLimit';count=257;period='minute';counterKey=@('identity');scope='workspace'})}}
+        }
+        Set-DemoProfile @{subscriptionId='s';resourceGroupName='r';gatewayName='g';teamAObjectId='a'} baseline
+    }
+} 'Policy ID omission must not authorize replacing an unrecognized allowance.' 'Unexpected workspace policies'
+& $module {
+    $script:CallerState=@{
+        gatewayId='/subscriptions/s/resourceGroups/r/providers/Microsoft.ApiManagement/aigateways/g'
+        resourceGroupId='/subscriptions/s/resourceGroups/r';callersProvisioned=$true
+        teamAObjectId='a';teamBObjectId='b'
+        callerIdentities=@{
+            A=@{id='/subscriptions/s/resourceGroups/r/providers/Microsoft.ManagedIdentity/userAssignedIdentities/g-team-a';principalId='a'}
+            B=@{id='/subscriptions/s/resourceGroups/r/providers/Microsoft.ManagedIdentity/userAssignedIdentities/g-team-b';principalId='b'}
+        }
+    }
+    function script:Invoke-DemoAz { return $script:CallerState }
+    $config=@{subscriptionId='s';resourceGroupName='r';gatewayName='g';provisionDemoCallers=$true}
+    $null=Get-DemoState $config
+    if($config.teamAObjectId -ne 'a' -or $config.teamBObjectId -ne 'b'){
+        throw 'Provisioned caller IDs must resolve from verified, dedicated deployment outputs.'
+    }
+    $script:CallerState.callerIdentities.A.id='/another-group/another-identity'
+    $refused=$false
+    try {Get-DemoState $config}
+    catch {$refused=$_.Exception.Message -like 'Dedicated caller identity outputs do not match*'}
+    if(-not $refused){throw 'Caller resolution must refuse identities outside the owned demo group.'}
+}
+$script:Checks += 2
 & {
     function Import-Module {}
     function Read-DemoConfig { return $c }
@@ -186,10 +259,21 @@ $script:Checks += 7
     }
     Assert-Throws { & (Join-Path $root 'scripts\cleanup.ps1') -ConfigPath 'synthetic' -WhatIf } `
         'Cleanup must refuse a group containing unowned resources, even with valid ownership markers.' 'Group contains 1 unexpected resource'
+    function Invoke-DemoAz {
+        return @(@{id="/demo/providers/Microsoft.AlertsManagement/smartDetectorAlertRules/Failure Anomalies - $($c.gatewayName)-insights"})
+    }
+    function Get-DemoArm {
+        return @{properties=@{detector=@{id='FailureAnomaliesDetector'};scope=@('/another/component')}}
+    }
+    Assert-Throws { & (Join-Path $root 'scripts\cleanup.ps1') -ConfigPath 'synthetic' -WhatIf } `
+        'The expected alert name must not authorize deletion of an alert targeting another component.' 'scoped exclusively'
 }
 
 foreach ($case in @(
     @{status=503;body='{"error":{"code":"synthetic_provider_failure","message":"not a real backend"}}';completion=$false;errorCode='synthetic_provider_failure'},
+    @{status=503;body='';completion=$false;errorCode=$null},
+    @{status=503;body='Synthetic non-JSON upstream failure';completion=$false;errorCode=$null},
+    @{status=200;body='null';completion=$false;errorCode=$null},
     @{status=200;body='{"choices":[{"message":{"content":""}}]}';completion=$false;errorCode=$null},
     @{status=200;body='{"choices":[{"message":{"content":"OK"}}],"usage":{"total_tokens":12}}';completion=$true;errorCode=$null}
 )) {

@@ -51,6 +51,8 @@ resource model 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = {
       version: modelVersion
     }
   }
+  // Foundry rejects concurrent project/deployment writes on the parent account.
+  dependsOn: [project]
 }
 
 output project object = {
