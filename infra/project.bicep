@@ -3,6 +3,9 @@ param projectName string
 param location string
 param modelVersion string
 param modelCapacity int
+param modelName string = 'gpt-6-sol'
+param deploymentName string = modelName
+param modelSku string = 'GlobalStandard'
 
 resource account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   name: accountName
@@ -36,18 +39,20 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' = {
 
 resource model 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = {
   parent: account
-  name: 'gpt-6-sol'
+  name: deploymentName
   sku: {
-    name: 'GlobalStandard'
+    name: modelSku
     capacity: modelCapacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-6-sol'
+      name: modelName
       version: modelVersion
     }
   }
+  // Foundry rejects concurrent project/deployment writes on the parent account.
+  dependsOn: [project]
 }
 
 output project object = {
@@ -55,4 +60,8 @@ output project object = {
   accountId: account.id
   endpoint: account.properties.endpoint
   deploymentName: model.name
+  deploymentId: model.id
+  modelName: modelName
+  modelVersion: modelVersion
+  location: location
 }

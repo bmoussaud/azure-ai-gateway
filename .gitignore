@@ -1,0 +1,5 @@
+.demo/
+*.local.json
+infra/*.json
+!infra/*.parameters.example.json
+__pycache__/

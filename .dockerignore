@@ -1,0 +1,12 @@
+**
+!console/
+!console/**
+!scripts/
+!scripts/**
+!config/
+!config/profiles/
+!config/profiles/**
+!observability/
+!observability/**
+console/__pycache__/
+**/*.local.json

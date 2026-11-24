@@ -1,0 +1,12 @@
+{
+  "backends": [{"priority": 0, "weight": 1}, {"priority": 1, "weight": 1}],
+  "maxRetryAttempts": 0,
+  "failures": [],
+  "policies": [
+    {
+      "id": "demo-hour-cost", "type": "costLimit", "amount": 0.1, "period": "hour",
+      "counterKey": ["identity"], "scope": "workspace",
+      "overrides": [{"claims": [{"name": "oid", "value": "__TEAM_A_OBJECT_ID__"}], "amount": 0.0001}]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+let Gateway = '__GATEWAY_ID__';
+let Insights = '__INSIGHTS_ID__';
+let GatewayHostname = '__GATEWAY_HOSTNAME__';
+let GatewaySpans = materialize(OTelSpans
+| where TimeGenerated > ago(1h)
+| where tostring(ResourceAttributes["cloud.resource_id"]) =~ Gateway
+    or (_ResourceId =~ Insights and ScopeName startswith "Microsoft.Azure.ApiManagement.Gateway."));
+let Requests = GatewaySpans
+| where Kind == "Server" and isnotempty(Attributes["http.response.status_code"])
+| where tostring(ResourceAttributes["cloud.resource_id"]) =~ Gateway
+    or tostring(Attributes["server.address"]) =~ GatewayHostname
+| extend IngestedAt = ingestion_time()
+| summarize arg_max(TimeGenerated, *) by TraceId
+| project TimeGenerated, IngestedAt, TraceId, DurationMs, StatusCode,
+    HttpStatus = toint(Attributes["http.response.status_code"]),
+    Identity = tostring(Attributes["azure.ai_gateway.identity.claims.oid"]);
+let Usage = OTelLogs
+| where TimeGenerated > ago(1h)
+| where tostring(ResourceAttributes["cloud.resource_id"]) =~ Gateway
+    or (_ResourceId =~ Insights and ScopeName == "Microsoft.Azure.ApiManagement.Gateway.Logs")
+| where isnotempty(Attributes["gen_ai.request.model"])
+| summarize arg_max(TimeGenerated, *) by TraceId
+| project TraceId, Alias = tostring(Attributes["gen_ai.request.model"]),
+    Tokens = tolong(Attributes["azure.ai_gateway.client.usage.total_tokens"]),
+    EstimatedUsd = todouble(Attributes["azure.ai_gateway.client.token.cost"]);
+let Routing = GatewaySpans
+| extend Attempt = toint(Attributes["azure.ai_gateway.routing.attempt"]),
+    Backend = tostring(Attributes["azure.ai_gateway.routing.backend"])
+| where Attempt >= 1 and isnotempty(Backend)
+| summarize arg_max(Attempt, Backend) by TraceId
+| project TraceId, Attempts = Attempt, Backend;
+let Policies = GatewaySpans
+| where StatusCode == "Error" and isnotempty(Attributes["azure.ai_gateway.policy.type"])
+| summarize RejectedPolicy = take_any(tostring(Attributes["azure.ai_gateway.policy.type"])) by TraceId;
+Requests
+| join kind=leftouter Usage on TraceId
+| join kind=leftouter Routing on TraceId
+| join kind=leftouter Policies on TraceId
+| project TimeGenerated, IngestedAt, TraceId, Identity, Alias, HttpStatus, StatusCode, DurationMs,
+    Backend, Attempts, Tokens, EstimatedUsd, RejectedPolicy
