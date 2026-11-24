@@ -71,6 +71,41 @@ function Get-DemoArmEnvelope {
     return @{ body = ($response.Content | ConvertFrom-Json -AsHashtable); etag = $etag }
 }
 
+function Set-DemoInsightsPublisher {
+    param([hashtable]$Config, [hashtable]$State)
+    $insights = Get-DemoArm $State.insightsId '2020-02-02-preview'
+    $ruleId = [string]$insights.properties.DataCollectionRuleResourceId
+    if (-not $ruleId.StartsWith("/subscriptions/$($Config.subscriptionId)/", [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Application Insights returned an unexpected managed DCR subscription.'
+    }
+    $rule = Get-DemoArm $ruleId '2024-03-11'
+    if (@($rule.properties.references.applicationInsights | Where-Object resourceId -IEQ $State.insightsId).Count -ne 1) {
+        throw 'The managed DCR does not reference this demo Application Insights component.'
+    }
+    $gateway = Get-DemoArm $State.gatewayId
+    $role = "/subscriptions/$($Config.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/3913510d-42f4-4e42-8a64-420c390055eb"
+    $assignments = (Get-DemoArm "$ruleId/providers/Microsoft.Authorization/roleAssignments" '2022-04-01').value
+    $matching = @($assignments | Where-Object {
+        $_.properties.principalId -ieq $gateway.identity.principalId -and $_.properties.roleDefinitionId -ieq $role -and
+        $_.properties.scope -ieq $ruleId
+    })
+    if (-not $matching.Count) {
+        $file = [IO.Path]::GetTempFileName()
+        try {
+            @{properties=@{principalId=$gateway.identity.principalId;principalType='ServicePrincipal';roleDefinitionId=$role}} |
+                ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $file
+            # Managed RGs deny ARM deployment writes, but explicitly permit role-assignment writes.
+            $assignmentId = "$ruleId/providers/Microsoft.Authorization/roleAssignments/$([guid]::NewGuid())"
+            $null = Invoke-DemoAz @('rest','--subscription',$Config.subscriptionId,'--method','put',
+                '--url',"https://management.azure.com${assignmentId}?api-version=2022-04-01",'--body',"@$file")
+            $read = Get-DemoArm $assignmentId '2022-04-01'
+            if ($read.properties.principalId -ine $gateway.identity.principalId -or $read.properties.scope -ine $ruleId) {
+                throw 'Application Insights publisher role read-back mismatch.'
+            }
+        } finally { Remove-Item -LiteralPath $file -Force }
+    }
+}
+
 function Test-DemoSubset {
     param($Expected, $Actual)
     if ($null -eq $Expected) { return $null -eq $Actual }
@@ -128,8 +163,12 @@ function Assert-DemoGroup {
 function Get-DemoState {
     param([hashtable]$Config)
     Assert-DemoGroup $Config
-    $state = Invoke-DemoAz @('deployment', 'sub', 'show', '--subscription', $Config.subscriptionId,
-        '--name', "demo-$($Config.gatewayName)", '--query', 'properties.outputs.demo.value')
+    $state = if ($env:DEMO_STATE_PATH) {
+        Get-Content -LiteralPath $env:DEMO_STATE_PATH -Raw | ConvertFrom-Json -AsHashtable
+    } else {
+        Invoke-DemoAz @('deployment', 'sub', 'show', '--subscription', $Config.subscriptionId,
+            '--name', "demo-$($Config.gatewayName)", '--query', 'properties.outputs.demo.value')
+    }
     $ids = Get-DemoIds $Config
     if (-not $state -or $state.gatewayId -ine $ids.gateway -or $state.resourceGroupId -ine $ids.group) {
         throw 'Missing or mismatched subscription deployment outputs.'
@@ -234,6 +273,19 @@ function Set-DemoProfile {
             throw 'Alias replacement did not clear the previous attempt budget.'
         }
     }
+}
+
+function Get-DemoRequestsQuery {
+    param([hashtable]$State)
+    if ($State.hostname -cnotmatch '^[a-zA-Z0-9.-]+$' -or
+        $State.gatewayId -notmatch '^/subscriptions/[a-f0-9-]+/resourceGroups/[a-zA-Z0-9_-]+/providers/Microsoft.ApiManagement/aigateways/[a-z0-9-]+$' -or
+        $State.insightsId -ine "$($State.resourceGroupId)/providers/Microsoft.Insights/components/$(($State.gatewayId -split '/')[-1])-insights") {
+        throw 'Unexpected gateway/Insights query scope; refusing KQL interpolation.'
+    }
+    return (Get-Content (Join-Path $script:Root 'observability\requests.kql') -Raw).
+        Replace('__GATEWAY_ID__', $State.gatewayId).
+        Replace('__INSIGHTS_ID__', $State.insightsId).
+        Replace('__GATEWAY_HOSTNAME__', $State.hostname)
 }
 
 function Invoke-DemoQuery {

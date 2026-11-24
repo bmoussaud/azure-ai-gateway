@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Scenario,
     [ValidateRange(50,200)][int]$Samples = 100,
     [string]$BaselineEvidencePath,
+    [string]$EventPath,
     [string]$OutputDirectory = (Join-Path (Split-Path $PSScriptRoot) '.demo')
 )
 $ErrorActionPreference = 'Stop'
@@ -53,6 +54,7 @@ function Send-ScenarioCall([string]$Team, [string]$Alias, [string]$Phase) {
     $pacing.Restart()
     $r = Invoke-DemoRequest $endpoint $Alias $token $Team $Phase -SyntheticInputMarkers $markers
     $results.Add($r)
+    if ($EventPath) { $r | ConvertTo-Json -Depth 15 -Compress | Add-Content -LiteralPath $EventPath }
     Write-Host ("{0} {1} {2} HTTP {3} {4:N0}ms trace={5}" -f $Phase,$Team,$Alias,$r.status,$r.latencyMs,$r.traceId)
     return $r
 }

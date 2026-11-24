@@ -44,7 +44,7 @@ The intended security boundary excludes additional gateways, direct Foundry acce
 
 ## Telemetry contract used
 
-The shared query uses `ResourceAttributes["cloud.resource_id"]`, `TraceId`, server span `DurationMs`, `StatusCode`, `http.response.status_code` and exported `azure.ai_gateway.identity.claims.oid`. Logs supply `gen_ai.request.model`, `azure.ai_gateway.client.usage.total_tokens` and `azure.ai_gateway.client.token.cost`; routing spans supply `azure.ai_gateway.routing.backend` and `.attempt`.
+The shared query uses `ResourceAttributes["cloud.resource_id"]` for the previous manual OTLP pipeline. The actual Insights-managed DCR does not enrich that attribute: new records instead carry the dedicated component `_ResourceId`, gateway `ScopeName`, and the server span's exact `server.address`. The query supports both verified shapes, filtering the Insights component and gateway hostname rather than dropping the isolation filter. `TraceId`, server span `DurationMs`, `StatusCode`, `http.response.status_code` and exported `azure.ai_gateway.identity.claims.oid` remain unchanged. Logs supply `gen_ai.request.model`, `azure.ai_gateway.client.usage.total_tokens` and `azure.ai_gateway.client.token.cost`; routing spans supply `azure.ai_gateway.routing.backend` and `.attempt`.
 
 Error attribution requires an error policy span carrying `azure.ai_gateway.policy.type`. If that detail is not emitted, the verifier refuses to certify token/cost rejection origin from HTTP status alone. The live service emits workspace-relative serving backend names (`backend-1/demo-model`, `backend-2/demo-model`), which the assertions match within the selected gateway's native records.
 

@@ -8,6 +8,56 @@ Use the [capability matrix](capabilities.md) for the public contracts and remain
 
 ## 1. Select the dedicated target
 
+### Browser console (Entra-protected HTTPS)
+
+The optional console shows Application A and Application B side by side and runs the same versioned PowerShell scenarios, not a second approximation of gateway behavior:
+
+```powershell
+.\scripts\deploy-console.ps1 -ConfigPath .\config\demo.local.json
+# Prints the service-assigned HTTPS URL and saves .demo\console-deployment.json.
+python -m unittest discover -s .\tests -p test_console.py
+# Real HTTPS acceptance: use an authorized bearer only in this process environment.
+# Prefer the server-side helper below; never paste credentials into commands or evidence.
+.\scripts\verify-console.ps1 -Url '<deployed-console-https-url>'
+```
+
+The deployment bootstraps behind an operator IPv4 /32, then `enable-console-auth.ps1` configures native Container Apps Easy Auth. **Entra authentication is mandatory** and its exact-principal allowlist contains only the signed-in deploying user and dedicated operator managed identity. Other tenant users and the A/B application identities cannot operate the console. Only read-only `/health` is excluded. HTTPS, single-tenant issuer, explicit audiences and a server-side client secret are enforced; no directory API permissions are granted. A GET confirms native authentication and the exact allowlist **before** the unreliable NAT-based ingress restriction is removed. Unauthenticated clients are redirected to Entra, not given scenario access.
+
+The operator must be able to create and own this dedicated Entra application registration as well as deploy Azure resources. Directory registration/service-principal/password operations use versioned Graph/Azure CLI contracts because these directory objects are not ARM resources; native authorization is in `infra\console-auth.bicep`. Non-secret registration IDs are saved only in the ignored local configuration. The 30-day browser-login credential is passed through a secure Bicep parameter, stored as a Container Apps secret, never exposed in container environment variables, and removed from the temporary parameter file in `finally`. Re-running `enable-console-auth.ps1` reuses a current secret or rotates one within two days of expiry.
+
+Use the printed `/.auth/login/aad` entry URL for a first visit, then return to the website. A non-browser anonymous request can receive 401 rather than an interactive redirect. The exact console origin is explicitly included in `login.allowedExternalRedirectUrls`: native Easy Auth otherwise rejects browser-cookie POSTs with an empty 403 before they reach the application. This preserves its [CSRF protection](https://learn.microsoft.com/azure/app-service/overview-authentication-authorization#mitigation-of-cross-site-request-forgery), rather than disabling it. The application's own same-origin/CSRF checks remain mandatory.
+
+Browser acceptance on 2026-11-24 completed an actual signed-in HTTPS baseline: two A calls, two B calls, both aliases and both native backends, HTTP 200 and 17 tokens each, four matching native records, strict verification and confirmed automatic baseline restoration. Other scenario engines were already qualified through the CLI; the complete browser scenario sequence was not rerun for this accelerated delivery.
+
+For unattended acceptance without exposing an Azure credential locally or in the browser, run the owned-container helper through authenticated Azure control-plane exec:
+
+```powershell
+az containerapp exec --subscription '<subscription-id>' --resource-group '<dedicated-group>' `
+  --name '<gateway-name>-console' --command 'python3 /app/console/operate.py accept'
+```
+
+It verifies an anonymous redirect and a wrong-principal 403, then obtains the exact operator MI token in memory and drives the real public HTTPS origin. It sends bounded baseline, failover and minute-governance traffic, then resets. Only credential-free results are saved to `/tmp/console-acceptance.json`; preserve them before restarting the app. Do not run acceptance while someone is operating a scenario.
+
+Inference tokens remain server-side. The existing A/B managed identities perform inference; a separate managed operator identity has demo-group read access, Log Analytics read access and only workspace/alias/model configuration writes scoped to this gateway. It cannot grant permissions or call models as an operator. ACR pull is scoped to the dedicated registry. Images are built with `az acr build` and deployed by immutable digest; the base images are also digest pinned.
+
+Baseline, 80/20, failover/recovery, minute token allowance, hourly allowance and reset controls invoke fixed scripts with bounded synthetic prompts. There is no arbitrary prompt/command endpoint. The cost button remains disabled while native pricing is incomplete. GET is read-only; POST requires same-origin and a per-process CSRF token. A single replica and process-wide lock serialize the complete scenario and native verification. Redeployment first places the old console in maintenance and refuses any running scenario. Do not operate CLI/portal mutations concurrently.
+
+HTTP status, observed token usage, latency and trace IDs arrive first. Backend selection, policy error origin and estimated cost appear **only after joining actual native telemetry**, sometimes several minutes later. `verified` requires the existing strict native verifier to pass. Missing telemetry is unknown, not zero or success. Runs restore baseline in `finally`; startup repairs only recognized demo faults. Failed restoration disables controls and requires an explicit operator reset/redeployment. Histories are bounded to 20 runs and are ephemeral across app restarts; preserve acceptance evidence outside the container.
+
+The 80/20 scenario emits 50 requests and takes approximately six minutes at the qualified backend rate. Failover emits seven, baseline four, and allowance checks never exceed 12. There are no client retries. Failover deliberately includes an all-backends-down error before recovery; a visible 503 in that phase is expected. Governance rejection must be native `tokenLimit`, with B continuing successfully. All observations still require native verification, including requests already accepted across a counter boundary.
+
+### Application Insights linkage
+
+The existing workspace-based component is enabled for native OTLP using the actual portal contract, `Microsoft.Insights/components@2020-02-02-preview` and `AzureMonitorWorkspaceIngestionMode: Enabled`. Azure creates its managed DCR/DCE/Monitor workspace and publishes `DataCollectionRuleResourceId` and the three `OTLP*Endpoint` properties. The gateway still uses its native `OpenTelemetry` exporter, managed identity, `https://monitor.azure.com/` audience and no prompt/response payload capture. Workbook queries continue against the same Log Analytics workspace, using the actual Insights component scope and native server hostname because this managed DCR does not enrich `cloud.resource_id`.
+
+The portal distinguishes an Insights integration from a custom exporter by resolving the endpoint's immutable DCR ID and finding the component whose `DataCollectionRuleResourceId` points back to it. Merely enriching a manual DCR with an Insights reference is insufficient.
+
+Live acceptance on the dedicated deployment found exactly one matching component through the portal-equivalent Resource Graph query and verified four fresh A/B baseline requests: both backends, HTTP 200, 17 tokens each, estimated USD 0.000066 each. The native verifier passed. This is data/control-plane evidence; the minimized portal browser did not permit a verified visual observation of the banner.
+
+**Required IaC exception:** Azure's managed monitoring group denies `Microsoft.Resources/deployments/write` but explicitly permits direct role-assignment writes. Therefore its Monitoring Metrics Publisher grant cannot be deployed through a nested Bicep module in that group. `deploy.ps1` verifies the component/DCR cross-reference and subscription, then idempotently reads/creates/verifies the exact-DCR role using ARM `2022-04-01`. It neither modifies the deny assignment nor grants a broader role. All other monitoring resources remain in Bicep. The previous manual OTLP resources are retained to avoid destructive migration; only the Insights-linked exporter receives new traffic.
+
+Deleting the dedicated demo group also deletes its Insights component. Its additional provider-managed monitoring group is outside the cleanup allowlist; do not force-delete it or remove its deny assignment. Check the provider-managed lifecycle after component deletion and investigate any retained resources through the supported Azure resource lifecycle.
+
 Use PowerShell 7.4+, Azure CLI and an existing Bicep installation. The deployment operator needs resource creation permissions and role-assignment write permissions. A reader alone cannot deploy. Telemetry inspection also requires Log Analytics query access and Monitoring Data Reader on the Azure Monitor workspace; these are separate from gateway inference roles.
 
 Copy `config\demo.example.json` to `config\demo.local.json`. Fill every placeholder with an authorized, explicit choice:
@@ -160,6 +210,8 @@ Remove-Item Env:\DEMO_TEAM_A_TOKEN, Env:\DEMO_TEAM_B_TOKEN -ErrorAction Silently
 Reset does not erase counters, cancel in-flight calls or immediately expire native exclusions. Wait for renewal/exclusion before repeating. Interrupted processes may not execute `finally`; reset repairs only recognized demo mappings and refuses unknown configurations.
 
 Cleanup checks subscription deployment outputs, group ownership markers and an exact resource allowlist. Application Insights can automatically create a Failure Anomalies alert; cleanup accepts only its exact expected name, detector and exclusive link to this demo's component. It refuses groups with foreign resources or alerts targeting other components, then waits for group deletion. Inspect unexpected resources manually; never broaden deletion to a subscription or shared group. External directory identities are not deleted. Subscription deployment history and provider-managed soft-delete retention can remain after resource-group deletion.
+
+After workshop cleanup, inspect the registration named `<gateway-name>-console` using `consoleAuthApplicationObjectId` in the ignored local configuration. Verify its object ID, `appId` against `consoleAuthClientId`, display name and ownership, then remove that exact application with `az ad app delete --id '<verified-application-object-id>'`. This also retires its browser-login credentials; do not delete any other application by name alone. Rotated credentials expire after 30 days; remove superseded `console-easy-auth` credentials only after confirming the deployed login and recorded current key ID.
 
 ## Remaining live acceptance
 

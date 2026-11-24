@@ -91,6 +91,7 @@ module monitoring './monitoring.bicep' = {
     location: monitoringLocation
     prefix: gatewayName
     gatewayName: gatewayName
+    gatewayHostname: gateway.outputs.hostname
     gatewayPrincipalId: gateway.outputs.principalId
     tags: tags
   }

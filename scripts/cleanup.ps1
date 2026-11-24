@@ -20,6 +20,20 @@ $allowed += @(
     "$base/Microsoft.Insights/dataCollectionRules/$($config.gatewayName)-otlp",
     "$base/Microsoft.Insights/workbooks/$($state.workbookName)"
 )
+$console = @(Invoke-DemoAz @('deployment','group','list','--subscription',$config.subscriptionId,
+    '--resource-group',$config.resourceGroupName,'--query',"[?name=='$($config.gatewayName)-console']"))
+if ($console.Count) {
+    $consoleDeployment = Invoke-DemoAz @('deployment','group','show','--subscription',$config.subscriptionId,
+        '--resource-group',$config.resourceGroupName,'--name',"$($config.gatewayName)-console")
+    $registryName = $consoleDeployment.properties.outputs.registryName.value
+    if ($registryName -cnotmatch '^aigw[a-z0-9]{13}$') { throw 'Unexpected console registry output; cleanup refused.' }
+    $allowed += @(
+        "$base/Microsoft.ContainerRegistry/registries/$registryName",
+        "$base/Microsoft.App/managedEnvironments/$($config.gatewayName)-console-env",
+        "$base/Microsoft.App/containerApps/$($config.gatewayName)-console",
+        "$base/Microsoft.ManagedIdentity/userAssignedIdentities/$($config.gatewayName)-console"
+    )
+}
 $resources = @(Invoke-DemoAz @('resource','list','--subscription',$config.subscriptionId,'--resource-group',$config.resourceGroupName))
 $generatedRuleId = "$base/Microsoft.AlertsManagement/smartDetectorAlertRules/Failure Anomalies - $($config.gatewayName)-insights"
 if (@($resources | Where-Object id -IEQ $generatedRuleId).Count) {

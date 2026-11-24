@@ -4,6 +4,8 @@ Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans servic
 
 **État : déployé et vérifié dans Azure : baseline A/B, routage 40/50–10/50, failover/récupération et limites de tokens minute/heure.** La limite de coût reste bloquée par le signal natif de tarification incomplète ; elle n'est pas certifiée. Pour une nouvelle cible, aucune région, capacité ou disponibilité de modèle n'est présumée.
 
+Application Insights est activé sur le composant existant et lié au DCR natif reconnu par le portail. Une nouvelle baseline A/B a été vérifiée dans ses logs et traces natifs ; l'affichage visuel de la bannière du portail n'a pas été observé.
+
 ## Utilisation
 
 PowerShell 7.4+, Azure CLI avec Bicep, droits de création et d'attribution RBAC et capacité de modèle vérifiée sont nécessaires. Utiliser deux identités applicatives existantes ou activer `provisionDemoCallers` pour créer des identités managées A/B dédiées.
@@ -21,6 +23,14 @@ Copy-Item .\config\demo.example.json .\config\demo.local.json
 ```
 
 Le [guide opérateur](docs/demo-guide.md) décrit l'authentification A/B, les scénarios, les assertions natives, le reset et le nettoyage. La [matrice des contrats et limites](docs/capabilities.md) distingue les capacités documentées des comportements restant à vérifier dans Azure.
+
+### Console HTTPS A/B
+
+```powershell
+.\scripts\deploy-console.ps1 -ConfigPath .\config\demo.local.json
+```
+
+La commande déploie une console Azure Container Apps avec les deux applications A/B et les boutons de scénarios. **Connexion Entra obligatoire, limitée à l'utilisateur opérateur et à l'identité managée d'acceptation**, sans consommation anonyme. La restriction IPv4 /32 du bootstrap n'est retirée qu'après vérification de cette protection native. Les identités et jetons d'inférence restent côté serveur. Les backends affichés proviennent des traces natives après ingestion ; le coût reste désactivé tant que sa tarification est incomplète. Le [guide](docs/demo-guide.md) détaille les droits de déploiement, la durée de validité du secret de connexion et le nettoyage.
 
 ## Garde-fous
 

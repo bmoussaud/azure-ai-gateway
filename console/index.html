@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Azure AI Gateway | Atelier A/B</title>
+<script>
+(() => {
+  const param = new URLSearchParams(window.location.search).get("scoutTheme");
+  const theme = param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", theme);
+})();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+*{box-sizing:border-box}body{margin:0;background:var(--cp-bg);color:var(--cp-text);font:16px "Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif}
+main{max-width:1440px;margin:auto;padding:40px 32px}header{display:flex;justify-content:space-between;align-items:start;gap:24px}
+h1{font-size:36px;margin:8px 0 12px;letter-spacing:-1px}h2{font-size:22px;margin:0 0 20px}p{line-height:1.55}.eyebrow{font-size:12px;letter-spacing:2px;font-weight:700;color:var(--cp-accent)}
+.muted,small{color:var(--cp-text-muted)}a{color:var(--cp-link);text-decoration:none}a:hover{text-decoration:underline}nav{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0}
+.card{background:var(--cp-surface);border:1px solid var(--cp-border);border-radius:16px;padding:24px;margin:24px 0}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:24px}.teams .card{min-width:0;margin:0}.controls{display:flex;flex-wrap:wrap;gap:12px}
+button{font:inherit;border:1px solid var(--cp-border-strong);border-radius:.625rem;padding:12px 16px;background:var(--cp-surface);color:var(--cp-text);cursor:pointer}
+button:hover:enabled{border-color:var(--cp-accent);background:var(--cp-accent-soft)}button:focus-visible,a:focus-visible{outline:3px solid var(--cp-accent);outline-offset:3px}
+button:disabled{opacity:.5;cursor:not-allowed}.primary{background:var(--cp-accent);color:var(--cp-accent-fg);border-color:var(--cp-accent)}.primary:hover:enabled{background:var(--cp-accent-hover);color:var(--cp-accent-fg)}
+.status{padding:10px 16px;background:var(--cp-surface-soft);border-radius:.625rem;white-space:nowrap}.success{color:var(--cp-success)}.danger{color:var(--cp-danger)}.warning{color:var(--cp-warning)}
+.metrics{display:flex;gap:24px;flex-wrap:wrap;padding:16px 0 24px}.metrics strong{display:block;font-size:28px}.metrics span{font-size:12px;color:var(--cp-text-muted)}
+.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--cp-text-muted);font-weight:500;white-space:nowrap}td,th{padding:12px 8px;border-top:1px solid var(--cp-border);vertical-align:top}code{font:11px Consolas,"Courier New",Courier,monospace}
+.backend{height:8px;background:var(--cp-surface-soft);border-radius:4px;overflow:hidden;margin:12px 0 8px;display:flex}.backend span{background:var(--cp-accent)}.backend span+span{background:var(--cp-border-strong)}#error:empty{display:none}#error{border-left:4px solid var(--cp-danger);padding:16px;color:var(--cp-danger);background:var(--cp-surface)}
+select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);color:var(--cp-text);border:1px solid var(--cp-border);border-radius:.625rem}
+@media(max-width:850px){.teams{grid-template-columns:1fr}header{display:block}main{padding:24px 16px}h1{font-size:28px}}
+</style>
+</head>
+<body>
+<main>
+<header><div><div class="eyebrow">WORKSHOP / MICROSOFT AI GATEWAY</div><h1>Deux applications. Une passerelle.</h1><p class="muted">Routage natif, resilience et enveloppes par identite authentifiee.<br>Aucun jeton Azure n'est transmis au navigateur.</p></div><div id="status" class="status" role="status">Connexion...</div></header>
+<nav aria-label="Observabilite"><a id="gateway" target="_blank" rel="noopener">Dashboard AI Gateway &#8599;</a><a id="insights" target="_blank" rel="noopener">Application Insights &#8599;</a><a id="workbook" target="_blank" rel="noopener">Azure Workbook &#8599;</a></nav>
+<div id="error" role="alert"></div>
+<section class="card" aria-labelledby="scenarios"><h2 id="scenarios">Piloter la demonstration</h2>
+<div class="controls">
+<button class="primary" data-scenario="baseline">Baseline A + B</button><button data-scenario="weighted-routing">Routage 80 / 20</button><button data-scenario="failover">Failover + recuperation</button><button data-scenario="token-rate">Limite tokens / minute</button><button data-scenario="token-quota">Quota horaire</button><button data-scenario="reset">Reset baseline</button><button disabled title="price_missing=true : aucune qualification fiable du seuil cout">Cout : non qualifie</button>
+</div><p class="muted"><small>Un scenario a la fois. Zero retry client, concurrence 1. Cadence derivee des limites reelles des backends (10 RPM). Le 80/20 emet 50 appels et prend environ 6 minutes. Les autres scenarios restent bornes a 12 appels maximum. Le profil baseline est restaure automatiquement.</small></p>
+<label for="history">Execution affichee </label><select id="history"><option>Aucune execution</option></select><p id="run-details" class="muted" aria-live="polite"></p>
+</section>
+<div class="teams">
+<section class="card" aria-labelledby="team-a"><div class="eyebrow">IDENTITE MANAGEE A</div><h2 id="team-a">Application Equipe A</h2><div id="metrics-A" class="metrics"></div><div id="route-A"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-A"></tbody></table></div></section>
+<section class="card" aria-labelledby="team-b"><div class="eyebrow">IDENTITE MANAGEE B</div><h2 id="team-b">Application Equipe B</h2><div id="metrics-B" class="metrics"></div><div id="route-B"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-B"></tbody></table></div></section>
+</div>
+<footer><p class="muted"><small>HTTP, tokens et latence : observation immediate. Backend, origine du rejet et cout estime : telemetrie native differee, jamais inferes. Un resultat n'est certifie qu'apres verification des traces. Les limites peuvent etre depassees par un appel deja accepte. GlobalStandard ne garantit pas la residence regionale.</small></p><p id="security" class="muted"></p></footer>
+</main>
+<script>
+let state=null, selected=null;
+const labels={configuring:"Configuration du profil",running:"Trafic borne en cours",complete:"Baseline restauree",verified:"Verifie par telemetrie native","awaiting-native":"Attente de telemetrie native",failed:"Echec / non certifie"};
+const el=id=>document.getElementById(id);
+function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
+function metric(parent,value,label){const n=node("div");n.append(node("strong",value),node("span",label));parent.append(n)}
+function render(){
+  el("status").textContent=state.busy?"Scenario en cours":state.ready?"Pret pour la demo":"Initialisation";
+  el("status").className="status "+(state.ready&&!state.busy?"success":"");
+  for(const [id,url] of Object.entries(state.links))el(id).href=url;
+  el("security").textContent=state.security;
+  for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=state.busy||!state.ready;
+  const jobs=state.jobs.slice().reverse();
+  if(!jobs.some(j=>j.id===selected))selected=jobs[0]?.id;
+  const history=el("history");history.replaceChildren();
+  for(const j of jobs){const o=node("option",`${j.scenario} | ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
+  const job=jobs.find(j=>j.id===selected);
+  el("error").textContent=state.error||job?.error||"";
+  el("run-details").textContent=job?`${labels[job.status]||job.status} | ${job.requests.length} appels | retries client : 0 | restauration baseline : ${job.restored?"confirmee":"en attente"}`:"Les appels A/B seront affiches ici, avec leur correlation native.";
+  const native=new Map((job?.native||[]).map(r=>[r.TraceId,r]));
+  for(const team of ["A","B"]){
+    const rows=(job?.requests||[]).filter(r=>r.team===team), metrics=el("metrics-"+team);metrics.replaceChildren();
+    metric(metrics,rows.length,"APPELS");metric(metrics,rows.filter(r=>r.status===200).length,"HTTP 200");metric(metrics,rows.filter(r=>r.status>=400).length,"REJETS / ERREURS");
+    const tokens=rows.reduce((n,r)=>n+(r.usage?.total_tokens||0),0);metric(metrics,tokens,"TOKENS OBSERVES");
+    const latencies=rows.map(r=>r.latencyMs).sort((a,b)=>a-b);
+    if(latencies.length){metric(metrics,Math.round(latencies[Math.min(latencies.length-1,Math.ceil(latencies.length*.95)-1)])+" ms","LATENCE P95")}
+    const known=rows.map(r=>native.get(r.traceId)).filter(Boolean);
+    const b1=known.filter(r=>r.Backend==="backend-1/demo-model").length,b2=known.filter(r=>r.Backend==="backend-2/demo-model").length,total=b1+b2;
+    const route=el("route-"+team);route.replaceChildren();
+    const bar=node("div",undefined,"backend");bar.setAttribute("role","img");bar.setAttribute("aria-label",`Backend 1 : ${b1}, backend 2 : ${b2}`);
+    for(const n of [b1,b2]){const segment=node("span");segment.style.width=(total?100*n/total:0)+"%";bar.append(segment)}
+    route.append(bar,node("small",`Backend 1 : ${b1} | Backend 2 : ${b2} | Preuves natives : ${known.length}/${rows.length}`));
+    const table=el("rows-"+team);table.replaceChildren();
+    for(const r of rows.slice().reverse()){
+      const tr=node("tr"), n=native.get(r.traceId), a=node("td");a.append(node("div",r.phase),node("small",r.alias));
+      const http=node("td",String(r.status),r.status===200?"success":"danger");
+      const usage=node("td",`${r.usage?.total_tokens??"-"} / ${Math.round(r.latencyMs)}`);
+      const backend=node("td");backend.append(node("div",n?(n.Backend||n.RejectedPolicy||"Aucun backend"):"En attente d'ingestion native"),node("code",r.traceId));
+      if(n?.EstimatedUsd!=null)backend.append(node("div",`Estime : $${Number(n.EstimatedUsd).toFixed(6)}`));
+      tr.append(a,http,usage,backend);table.append(tr);
+    }
+  }
+}
+async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;el("status").textContent="Connexion interrompue";for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=true}finally{setTimeout(poll,2000)}}
+for(const b of document.querySelectorAll("[data-scenario]"))b.addEventListener("click",async()=>{
+  for(const x of document.querySelectorAll("[data-scenario]"))x.disabled=true;
+  try{const r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify({scenario:b.dataset.scenario})});const result=await r.json();if(!r.ok)throw Error(result.error||`HTTP ${r.status}`);selected=result.id}catch(e){el("error").textContent=e.message}
+});
+el("history").addEventListener("change",e=>{selected=e.target.value;render()});
+poll();
+</script>
+</body>
+</html>

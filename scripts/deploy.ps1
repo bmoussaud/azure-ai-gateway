@@ -25,6 +25,7 @@ try {
     if (-not $Apply) { Write-Host 'Validation/what-if only. Use -Apply to provision the explicit dedicated target.'; return }
     $null = Invoke-DemoAz (@('deployment','sub','create') + $common)
     $state = Get-DemoState $config
+    Set-DemoInsightsPublisher $config $state
     $gateway = Get-DemoArm $state.gatewayId
     if ($gateway.properties.provisioningState -ne 'Succeeded' -or -not $state.hostname) { throw 'Gateway is not ready.' }
     Set-DemoProfile $config baseline

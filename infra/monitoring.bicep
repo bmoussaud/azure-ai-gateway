@@ -1,6 +1,7 @@
 param location string
 param prefix string
 param gatewayName string
+param gatewayHostname string
 param gatewayPrincipalId string
 param tags object
 
@@ -22,7 +23,7 @@ resource metrics 'Microsoft.Monitor/accounts@2023-04-03' = {
   properties: {}
 }
 
-resource insights 'Microsoft.Insights/components@2020-02-02' = {
+resource insights 'Microsoft.Insights/components@2020-02-02-preview' = {
   name: '${prefix}-insights'
   location: location
   tags: tags
@@ -31,6 +32,8 @@ resource insights 'Microsoft.Insights/components@2020-02-02' = {
     Application_Type: 'web'
     WorkspaceResourceId: logs.id
     DisableLocalAuth: true
+    #disable-next-line BCP037
+    AzureMonitorWorkspaceIngestionMode: 'Enabled'
   }
 }
 
@@ -108,13 +111,13 @@ resource exporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExport
     }
     openTelemetry: {
       logsEndpoint: {
-        url: '${endpoint.properties.logsIngestion.endpoint}/datacollectionRules/${rule.properties.immutableId}/streams/Microsoft-OTLP-Logs/otlp/v1/logs'
+        url: any(insights.properties).OTLPLogsEndpoint
       }
       tracesEndpoint: {
-        url: '${endpoint.properties.logsIngestion.endpoint}/datacollectionRules/${rule.properties.immutableId}/streams/Microsoft-OTLP-Traces/otlp/v1/traces'
+        url: any(insights.properties).OTLPTracesEndpoint
       }
       metricsEndpoint: {
-        url: '${endpoint.properties.metricsIngestion.endpoint}/datacollectionRules/${rule.properties.immutableId}/streams/Custom-Metrics-Otel/otlp/v1/metrics'
+        url: any(insights.properties).OTLPMetricsEndpoint
       }
     }
     telemetry: {
@@ -124,15 +127,16 @@ resource exporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExport
       }]
     }
   }
-  dependsOn: [publisher]
 }
 
 output workspaceId string = logs.id
 output workspaceCustomerId string = logs.properties.customerId
 output insightsId string = insights.id
-output metricsId string = metrics.id
+output metricsId string = any(insights.properties).AzureMonitorWorkspaceResourceId
 
-var requests = replace(loadTextContent('../observability/requests.kql'), '__GATEWAY_ID__', resourceId('Microsoft.ApiManagement/aigateways', gatewayName))
+var requests = replace(replace(replace(loadTextContent('../observability/requests.kql'),
+  '__GATEWAY_ID__', resourceId('Microsoft.ApiManagement/aigateways', gatewayName)),
+  '__INSIGHTS_ID__', insights.id), '__GATEWAY_HOSTNAME__', gatewayHostname)
 var queryBase = {
   version: 'KqlItem/1.0'
   queryType: 0

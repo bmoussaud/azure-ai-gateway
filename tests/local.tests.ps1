@@ -33,6 +33,17 @@ Assert-True (-not (Test-DemoSubset @{ count=10 } @{ count=11 })) 'Changed allowa
 Assert-Throws {Assert-DemoWeightedDistribution 50 50} 'The small-sample tolerance must not certify traffic served by only one backend.'
 Assert-Throws {Assert-DemoWeightedDistribution 10 100} 'A materially incorrect routing distribution must be refused.'
 Assert-True ((Assert-DemoWeightedDistribution 80 100) -gt 0) 'A representative 80/20 distribution should pass.'
+Assert-Throws {
+    Get-DemoRequestsQuery @{hostname="invalid'; take 1";gatewayId='/invalid';insightsId='/invalid';resourceGroupId='/invalid'}
+} 'Query interpolation must refuse a malformed gateway hostname.' 'refusing KQL interpolation'
+Assert-Throws {
+    Get-DemoRequestsQuery @{
+        hostname='gateway.example.test'
+        gatewayId='/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-aigw-demo-local/providers/Microsoft.ApiManagement/aigateways/demo'
+        resourceGroupId='/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-aigw-demo-local'
+        insightsId='/another/component'
+    }
+} 'An Insights-scoped query must not admit another component.' 'refusing KQL interpolation'
 
 $c = @{
     subscriptionId='11111111-1111-1111-1111-111111111111'; resourceGroupName='rg-aigw-demo-local'
@@ -246,6 +257,45 @@ Assert-Throws {
     if(-not $refused){throw 'Caller resolution must refuse identities outside the owned demo group.'}
 }
 $script:Checks += 2
+& $module {
+    $script:PublisherReads=0
+    $script:PublisherWrites=0
+    $rule='/subscriptions/s/resourceGroups/managed/providers/Microsoft.Insights/dataCollectionRules/native'
+    $component='/subscriptions/s/resourceGroups/demo/providers/Microsoft.Insights/components/demo'
+    $script:PublisherRule=$rule
+    $script:PublisherComponent=$component
+    function script:Get-DemoArm {
+        param($Id,$ApiVersion)
+        $script:PublisherReads++
+        if($Id -eq $script:PublisherComponent){return @{properties=@{DataCollectionRuleResourceId=$script:PublisherRule}}}
+        if($Id -eq $script:PublisherRule){return @{properties=@{references=@{applicationInsights=@(@{resourceId=$script:PublisherComponent})}}}}
+        if($Id.EndsWith('/roleAssignments')){return @{value=@(@{properties=@{
+            principalId='gateway-principal';scope=$script:PublisherRule
+            roleDefinitionId='/subscriptions/s/providers/Microsoft.Authorization/roleDefinitions/3913510d-42f4-4e42-8a64-420c390055eb'
+        }})}}
+        return @{identity=@{principalId='gateway-principal'}}
+    }
+    function script:Invoke-DemoAz { $script:PublisherWrites++; throw 'Unexpected publisher write.' }
+    Set-DemoInsightsPublisher @{subscriptionId='s'} @{insightsId=$component;gatewayId='/subscriptions/s/resourceGroups/demo/providers/Microsoft.ApiManagement/aigateways/g'}
+    if($script:PublisherWrites -ne 0){throw 'An existing exact-DCR publisher grant must be an idempotent no-op.'}
+    $script:PublisherRule='/subscriptions/other/resourceGroups/managed/providers/Microsoft.Insights/dataCollectionRules/native'
+    $refused=$false
+    try {Set-DemoInsightsPublisher @{subscriptionId='s'} @{insightsId=$component}}
+    catch {$refused=$_.Exception.Message -like '*unexpected managed DCR subscription*'}
+    if(-not $refused){throw 'Publisher grant must refuse a DCR in another subscription.'}
+    $script:PublisherRule=$rule
+    $script:PublisherComponent='/a-different-component'
+    function script:Get-DemoArm {
+        param($Id,$ApiVersion)
+        if($Id -eq '/expected'){return @{properties=@{DataCollectionRuleResourceId='/subscriptions/s/resourceGroups/managed/providers/Microsoft.Insights/dataCollectionRules/native'}}}
+        return @{properties=@{references=@{applicationInsights=@(@{resourceId='/foreign'})}}}
+    }
+    $refused=$false
+    try {Set-DemoInsightsPublisher @{subscriptionId='s'} @{insightsId='/expected'}}
+    catch {$refused=$_.Exception.Message -like '*does not reference this demo*'}
+    if(-not $refused){throw 'Publisher grant must refuse a DCR not linked to the exact component.'}
+}
+$script:Checks += 3
 & {
     function Import-Module {}
     function Read-DemoConfig { return $c }
@@ -254,12 +304,15 @@ $script:Checks += 2
     }
     function Invoke-DemoAz {
         param($Arguments)
+        if ($Arguments[0] -eq 'deployment') { return @() }
         if ($Arguments[0] -eq 'resource' -and $Arguments[1] -eq 'list') { return @(@{id='/demo/foreign-resource'}) }
         throw 'Unexpected Azure command during the cleanup refusal test.'
     }
     Assert-Throws { & (Join-Path $root 'scripts\cleanup.ps1') -ConfigPath 'synthetic' -WhatIf } `
         'Cleanup must refuse a group containing unowned resources, even with valid ownership markers.' 'Group contains 1 unexpected resource'
     function Invoke-DemoAz {
+        param($Arguments)
+        if ($Arguments[0] -eq 'deployment') { return @() }
         return @(@{id="/demo/providers/Microsoft.AlertsManagement/smartDetectorAlertRules/Failure Anomalies - $($c.gatewayName)-insights"})
     }
     function Get-DemoArm {
@@ -315,5 +368,67 @@ try {
     $listener.Stop()
     $server.Dispose()
 }
+}
+& {
+    $fixture = [IO.Path]::GetTempFileName()
+    $global:DemoAuthFixture=@{}
+    function Import-Module {}
+    function Read-DemoConfig { return @{gatewayName='demo';subscriptionId='s';resourceGroupName='r'} }
+    function Get-DemoState { return @{resourceGroupId='/subscriptions/s/resourceGroups/r'} }
+    function Get-DemoArm { return @{properties=@{configuration=@{ingress=@{fqdn='demo-console.test.azurecontainerapps.io'}}}} }
+    function az { $global:LASTEXITCODE=0; return 'MAINTENANCE_READY' }
+    function Invoke-DemoAz {
+        param($Arguments)
+        if ($Arguments[0] -eq 'account') { return 'tenant' }
+        if ($Arguments[0] -eq 'ad') {
+            if ($Arguments[1] -eq 'signed-in-user') { return 'user' }
+            if ($Arguments[1] -eq 'sp') { return @{id='owned-service-principal'} }
+            if ($Arguments[2] -eq 'owner') { return @{id='user'} }
+            if ($Arguments[2] -eq 'show') {
+                return @{id='object';appId='client';displayName='demo-console';signInAudience='AzureADMyOrg'
+                    passwordCredentials=@(
+                        @{keyId='current-key';displayName='console-easy-auth';endDateTime=$global:DemoAuthFixture.currentExpiry},
+                        @{keyId='unrelated-key';displayName='console-easy-auth';endDateTime=[DateTimeOffset]::UtcNow.AddDays(20).ToString('o')}
+                    )}
+            }
+        }
+        if ($Arguments[0] -eq 'rest') {
+            $url=$Arguments[$Arguments.IndexOf('--url')+1]
+            if ($url -like '*/listSecrets?*') {
+                return @{value=@(@{name='console-auth-client-secret';value='synthetic-current-credential'})}
+            }
+            if ($url -like '*/addPassword') {
+                $global:DemoAuthFixture.passwordAdds++
+                return @{keyId='replacement-key';secretText='synthetic-replacement-credential'}
+            }
+            if ($Arguments -contains 'patch') { return }
+        }
+        if ($Arguments[0] -eq 'deployment' -and $Arguments[2] -eq 'show') {
+            return @{properties=@{parameters=@{}}}
+        }
+        if ($Arguments[0] -eq 'deployment' -and $Arguments[2] -eq 'validate') { throw 'Stop synthetic validation' }
+        throw 'Unexpected Azure command during the authentication credential test.'
+    }
+    try {
+        foreach ($expired in @($true,$false)) {
+            @{consoleAuthApplicationObjectId='object';consoleAuthCredentialKeyId='current-key'} |
+                ConvertTo-Json | Set-Content -LiteralPath $fixture
+            $global:DemoAuthFixture.passwordAdds=0
+            $global:DemoAuthFixture.currentExpiry=[DateTimeOffset]::UtcNow.AddDays($(if($expired){-1}else{20})).ToString('o')
+            $observed=$null
+            try { & (Join-Path $root 'scripts\enable-console-auth.ps1') -ConfigPath $fixture }
+            catch { $observed=$_.Exception.Message }
+            Assert-True ($observed -ceq 'Stop synthetic validation') `
+                "Synthetic authentication must stop before deployment, not: $observed"
+            Assert-True ($global:DemoAuthFixture.passwordAdds -eq $(if($expired){1}else{0})) `
+                'Credential reuse must bind to the deployed key, not another unexpired application credential.'
+            $saved=Get-Content -LiteralPath $fixture -Raw | ConvertFrom-Json
+            Assert-True ($saved.consoleAuthCredentialKeyId -ceq 'current-key') `
+                'A failed deployment must not mark an uninstalled replacement credential as current.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $fixture -Force
+        Remove-Variable -Name DemoAuthFixture -Scope Global
+    }
 }
 Write-Host "$script:Checks local checks passed. Synthetic fixtures are not Azure evidence."

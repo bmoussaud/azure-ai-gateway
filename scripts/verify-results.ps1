@@ -10,8 +10,7 @@ $run = Get-Content -LiteralPath $ResultsPath -Raw | ConvertFrom-Json -AsHashtabl
 if ($run.gatewayId -ine $state.gatewayId -or $run.outcome -ne 'http-observed-awaiting-native-telemetry') {
     throw 'Only complete HTTP observations from this gateway can be checked.'
 }
-$query = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot) 'observability\requests.kql') -Raw
-$query = $query.Replace('__GATEWAY_ID__',$state.gatewayId)
+$query = Get-DemoRequestsQuery $state
 $traceIds = @($run.results | ForEach-Object { if ($_.traceId -cnotmatch '^[a-f0-9]{32}$') { throw 'Invalid trace ID.' }; "'$($_.traceId)'" })
 $query += "`n| where TraceId in ($($traceIds -join ','))"
 $rows = @(Invoke-DemoQuery $config $state $query)
