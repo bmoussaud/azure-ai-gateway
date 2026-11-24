@@ -45,6 +45,7 @@ class Console:
         self.state = state
         self.lock = threading.Lock()
         self.guard = threading.RLock()
+        self.stop_signal = threading.Event()
         self.csrf = secrets.token_urlsafe(32)
         self.jobs = []
         self.last_start = 0.0
@@ -88,13 +89,35 @@ class Console:
         self.last_start = time.monotonic()
         job = {"id": uuid.uuid4().hex, "scenario": scenario, "status": "configuring",
                "startedAt": time.time(), "requests": [], "native": [], "activity": [], "error": None,
-               "clientRetries": 0, "concurrency": 1, "restored": False,
+               "clientRetries": 0, "concurrency": 1, "restored": False, "stopRequested": False,
                "requestCeiling": None, "minimumSpacingSeconds": None, "finishedAt": None}
         self.note(job, "accepted")
         with self.guard:
+            self.stop_signal.clear()
             self.jobs = (self.jobs + [job])[-20:]
         threading.Thread(target=self.run, args=(job,), daemon=True).start()
         return 202, {"id": job["id"]}
+
+    def stop(self, job_id):
+        with self.guard:
+            job = self.jobs[-1] if self.jobs else None
+            if not job or job["id"] != job_id or job["scenario"] == "reset":
+                return 409, {"error": "Aucun scénario interruptible ne correspond à cette exécution."}
+            if job["status"] == "stopped":
+                return 200, {"id": job_id}
+            if job["status"] not in ("configuring", "running", "awaiting-native"):
+                return 409, {"error": "Cette exécution est déjà terminée."}
+            if not job["stopRequested"]:
+                try:
+                    directory = self.data / job["id"]
+                    directory.mkdir(exist_ok=True)
+                    (directory / "stop.requested").touch()
+                except OSError:
+                    return 503, {"error": "Impossible de transmettre l’arrêt au scénario."}
+                job["stopRequested"] = True
+                self.note(job, "stop-requested")
+                self.stop_signal.set()
+            return 202, {"id": job_id}
 
     def note(self, job, kind, **fields):
         with self.guard:
@@ -118,11 +141,13 @@ class Console:
     def run(self, job):
         directory = self.data / job["id"]
         try:
-            directory.mkdir()
+            directory.mkdir(exist_ok=True)
             env = dict(self.env)
             if job["scenario"] != "reset":
                 self.note(job, "identities")
                 for team in ("A", "B"):
+                    if self.stop_signal.is_set():
+                        return
                     env[f"DEMO_TEAM_{team}_TOKEN"] = managed_token(
                         self.state["callerIdentities"][team]["clientId"], "https://ai.gateway.azure.com")
             else:
@@ -154,6 +179,8 @@ class Console:
                     job["minimumSpacingSeconds"] = observed["minimumInterRequestSpacingSeconds"]
                 if process.returncode:
                     raise RuntimeError("Scenario assertion failed. HTTP evidence retained; not certified.")
+                if self.stop_signal.is_set():
+                    return
                 if job["scenario"] == "reset":
                     job.update(status="complete", restored=True)
                     self.note(job, "restored")
@@ -161,6 +188,8 @@ class Console:
                 job["status"] = "awaiting-native"
                 self.note(job, "awaiting-traces")
                 for _ in range(30):
+                    if self.stop_signal.is_set():
+                        return
                     query = subprocess.run(self.command("console-native.ps1", "-EventsPath", directory / "events.jsonl",
                                                         "-OutputPath", directory / "native.json"),
                                            env=self.env, stdout=log, stderr=subprocess.STDOUT, timeout=90)
@@ -170,16 +199,21 @@ class Console:
                     if len(native) != len(job["native"]):
                         self.note(job, "traces", count=len(native), total=len(job["requests"]))
                     job["native"] = native
+                    if self.stop_signal.is_set():
+                        return
                     if len(job["native"]) == len(job["requests"]):
                         self.note(job, "verifying")
                         verified = subprocess.run(self.command("verify-results.ps1", "-ResultsPath", run),
                                                   env=self.env, stdout=log, stderr=subprocess.STDOUT, timeout=90)
                         if verified.returncode:
                             raise RuntimeError("Native scenario assertions failed; HTTP alone is not certification.")
-                        job["status"] = "verified"
-                        self.note(job, "verified")
+                        with self.guard:
+                            if not self.stop_signal.is_set():
+                                job["status"] = "verified"
+                                self.note(job, "verified")
                         return
-                    time.sleep(15)
+                    if self.stop_signal.wait(15):
+                        return
                 raise TimeoutError("Native ingestion not complete after bounded read-only verification.")
         except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
             job["status"] = "failed"
@@ -195,12 +229,16 @@ class Console:
                     job["restored"] = repair.returncode == 0
                     self.note(job, "restored")
                 except (OSError, subprocess.SubprocessError):
+                    job["status"] = "failed"
                     job["error"] = "BASELINE RESTORATION FAILED. Controls locked; operator reset required."
                     self.ready = False
                     self.note(job, "repair-failed")
             job["finishedAt"] = time.time()
             try:
                 with self.guard:
+                    if job.get("stopRequested") and job["status"] != "failed" and job["restored"]:
+                        job["status"] = "stopped"
+                        self.note(job, "stopped")
                     (directory / "console-result.json").write_text(json.dumps(job), encoding="utf-8")
             except OSError as error:
                 job["status"] = "failed"
@@ -292,19 +330,21 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 console.lock.release()
             return
-        if self.path != "/api/run":
+        if self.path not in ("/api/run", "/api/stop"):
             self.send(404, {"error": "Not found"})
             return
         try:
             if length < 2 or length > 128 or self.headers.get_content_type() != "application/json":
                 raise ValueError("Expected bounded JSON")
             body = json.loads(raw)
-            if not isinstance(body, dict) or set(body) != {"scenario"} or not isinstance(body["scenario"], str):
-                raise ValueError("Only a fixed scenario name is accepted")
+            field = "scenario" if self.path == "/api/run" else "id"
+            if not isinstance(body, dict) or set(body) != {field} or not isinstance(body[field], str):
+                raise ValueError("Unexpected action payload")
         except (ValueError, json.JSONDecodeError):
-            self.send(400, {"error": "Expected a fixed scenario name as bounded JSON."})
+            self.send(400, {"error": "Invalid scenario action payload."})
             return
-        code, result = self.server.console.start(body["scenario"])
+        console = self.server.console
+        code, result = console.start(body["scenario"]) if field == "scenario" else console.stop(body["id"])
         self.send(code, result)
 
 

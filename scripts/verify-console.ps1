@@ -1,6 +1,6 @@
 #requires -Version 7.4
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly)
+param([Parameter(Mandatory)][string]$Url, [string]$OutputPath = (Join-Path (Split-Path $PSScriptRoot) '.demo\console-acceptance.json'), [switch]$LiveBaselineOnly, [switch]$StopAfterFirstResponse)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uri = [uri]$Url
@@ -24,6 +24,7 @@ function Wait-ConsoleJob([string]$Id) {
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes(35)
     $previous = ''
     $inFlight = $false
+    $stopSent = $false
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
         $state = Read-Console
         $job = @($state.jobs | Where-Object id -CEQ $Id)
@@ -38,14 +39,31 @@ function Wait-ConsoleJob([string]$Id) {
             $inFlight = $true
         }
         if ($previous -eq 'failed') { throw "Hosted scenario failed: $($job[0].error)" }
+        if ($StopAfterFirstResponse -and -not $stopSent -and $job[0].requests.Count) {
+            $headers = $authorization.Clone()
+            $headers.Origin = $Url
+            $headers.'X-Demo-Csrf' = $state.csrf
+            $null = Invoke-RestMethod "$Url/api/stop" -Method Post -ContentType application/json `
+                -Headers $headers -Body (@{id=$Id} | ConvertTo-Json -Compress) -TimeoutSec 30
+            $stopSent = $true
+        }
+        if ($StopAfterFirstResponse -and $previous -eq 'stopped' -and -not $state.busy) {
+            if (-not $stopSent -or -not $state.ready -or -not $job[0].restored -or
+                $job[0].requests.Count -notin (1..3) -or $job[0].activity[-1].kind -ne 'stopped') {
+                throw 'Expected a partial baseline, restored profile and released controls.'
+            }
+            Write-Host "Start/Stop confirmed: $($job[0].requests.Count) of 4 responses retained, baseline restored, ready."
+            return $job[0]
+        }
         if ($previous -in @('verified','complete') -and -not $state.busy) {
+            if ($StopAfterFirstResponse) { throw 'Baseline completed instead of stopping.' }
             if (-not $job[0].restored) { throw 'Hosted job did not confirm baseline restoration.' }
             if ($LiveBaselineOnly -and (-not $inFlight -or $job[0].requests.Count -ne 4 -or
                 @($job[0].activity | Where-Object kind -CEQ 'responded').Count -ne 4 -or
                 $job[0].activity[-1].kind -cne 'verified')) { throw 'Live baseline journal evidence incomplete.' }
             return $job[0]
         }
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds ($StopAfterFirstResponse ? 1 : 5)
     }
     throw 'Hosted verification timed out. No second traffic job was submitted.'
 }
@@ -73,9 +91,9 @@ $overlap = Invoke-WebRequest "$Url/api/run" -Method Post -ContentType applicatio
 if ($overlap.StatusCode -ne 409) { throw 'Overlapping scenario was not refused.' }
 $jobs = [Collections.Generic.List[object]]::new()
 $jobs.Add((Wait-ConsoleJob $run.id))
-if ($LiveBaselineOnly) {
+if ($LiveBaselineOnly -or $StopAfterFirstResponse) {
     $jobs[0] | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $OutputPath
-    Write-Host 'Live baseline verified: 4 responses, native evidence and restored gateway.'
+    if ($LiveBaselineOnly) { Write-Host 'Live baseline verified: 4 responses, native evidence and restored gateway.' }
     return
 }
 foreach ($scenario in @('failover','token-rate','reset')) {

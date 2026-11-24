@@ -106,6 +106,38 @@ class ConsoleTests(unittest.TestCase):
             self.assertIn("reset-demo.ps1", " ".join(reset.call_args.args[0]))
             self.assertTrue((Path(self.directory.name) / "test-run" / "console-result.json").exists())
 
+    def test_stop_is_scoped_protected_and_idempotent_then_restores(self):
+        with patch.object(console_module.threading, "Thread"):
+            _, result = self.console.start("weighted-routing")
+        job = self.console.jobs[-1]
+        payload = json.dumps(result).encode()
+        marker = self.console.data / result["id"] / "stop.requested"
+        self.assertEqual(self.request("/api/stop", payload, {})[0], 403)
+        self.assertEqual(self.request("/api/stop", b'{"id":"old-run"}', self.headers())[0], 409)
+        self.assertFalse(marker.exists())
+        for _ in range(2):
+            self.assertEqual(self.request("/api/stop", payload, self.headers())[0], 202)
+        self.assertTrue(marker.exists())
+        self.assertEqual([e["kind"] for e in job["activity"]].count("stop-requested"), 1)
+        self.assertEqual(self.console.start("baseline")[0], 409)
+        with patch.object(console_module, "managed_token") as token, \
+                patch.object(console_module.subprocess, "run") as repair:
+            repair.return_value.returncode = 0
+            self.console.run(job)
+            token.assert_not_called()
+            repair.assert_called_once()
+        self.assertEqual(job["status"], "stopped")
+        self.assertTrue(job["restored"])
+        self.assertFalse(self.console.lock.locked())
+        self.assertEqual(self.console.stop(job["id"])[0], 200)
+
+    def test_reset_cannot_be_cancelled(self):
+        with patch.object(console_module.threading, "Thread"):
+            _, result = self.console.start("reset")
+        self.assertEqual(self.console.stop(result["id"])[0], 409)
+        self.assertFalse(self.console.stop_signal.is_set())
+        self.console.lock.release()
+
     def test_restoration_failure_locks_controls(self):
         self.console.lock.acquire()
         job = {"id": "test-failure", "scenario": "baseline", "restored": False, "error": None}

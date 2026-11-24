@@ -7,6 +7,7 @@ param(
     [string]$BaselineEvidencePath,
     [string]$EventPath,
     [string]$ActivityPath,
+    [string]$StopPath,
     [string]$OutputDirectory = (Join-Path (Split-Path $PSScriptRoot) '.demo')
 )
 $ErrorActionPreference = 'Stop'
@@ -51,16 +52,33 @@ $restorationFailures = [Collections.Generic.List[string]]::new()
 $outcome = 'incomplete'
 $pacing = [Diagnostics.Stopwatch]::new()
 
+function Assert-ScenarioActive {
+    if ($StopPath -and (Test-Path -LiteralPath $StopPath)) {
+        throw [OperationCanceledException]::new('Operator requested a stop.')
+    }
+}
+
+function Wait-Scenario([int]$Milliseconds) {
+    if (-not $StopPath) { Start-Sleep -Milliseconds $Milliseconds; return }
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    while ($timer.ElapsedMilliseconds -lt $Milliseconds) {
+        Assert-ScenarioActive
+        Start-Sleep -Milliseconds ([Math]::Clamp($Milliseconds - $timer.ElapsedMilliseconds, 1, 250))
+    }
+}
+
 function Send-ScenarioCall([string]$Team, [string]$Alias, [string]$Phase) {
+    Assert-ScenarioActive
     if ($results.Count -ge $requests) { throw 'Hard request ceiling reached; do not send more traffic.' }
     $remaining = $delaySeconds - $pacing.Elapsed.TotalSeconds
     if ($results.Count -and $remaining -gt 0) {
         Write-Activity 'pacing' @{team=$Team; seconds=[int][Math]::Ceiling($remaining)}
-        Start-Sleep -Milliseconds ([int][Math]::Ceiling(1000 * $remaining))
+        Wait-Scenario ([int][Math]::Ceiling(1000 * $remaining))
     }
     $token = if ($Team -eq 'A') { $tokenA } else { $tokenB }
     $markers = if ($Team -eq 'A' -and $Scenario -eq 'token-rate') { 640 } elseif ($Team -eq 'A' -and $Scenario -eq 'token-quota') { 160 } else { 0 }
     $call = @{team=$Team; alias=$Alias; phase=$Phase; number=$results.Count + 1}
+    Assert-ScenarioActive
     Write-Activity 'sending' $call
     $pacing.Restart()
     $r = Invoke-DemoRequest $endpoint $Alias $token $Team $Phase -SyntheticInputMarkers $markers
@@ -76,6 +94,7 @@ function Assert-Completion($Result) {
 }
 
 function Set-LabPathFault([int]$Backend) {
+    Assert-ScenarioActive
     $id = "$($ids.workspace)/modelProviders/backend-$Backend/models/demo-model"
     if (-not $savedModels.ContainsKey($id)) {
         $model = Get-DemoArm $id
@@ -89,12 +108,13 @@ function Set-LabPathFault([int]$Backend) {
 }
 
 try {
+    Assert-ScenarioActive
     Write-Activity 'applying-profile'
     Set-DemoProfile $config $Scenario
     $second = [DateTimeOffset]::UtcNow.Second
     if ($Scenario -eq 'token-rate' -and $second -gt 5) {
         Write-Activity 'quota-window' @{seconds=61 - $second}
-        Start-Sleep -Seconds (61 - $second)
+        Wait-Scenario ((61 - $second) * 1000)
     }
     switch ($Scenario) {
         baseline {
@@ -117,7 +137,7 @@ try {
             Write-Activity 'repairing-routes'
             foreach ($id in @($savedModels.Keys)) { Set-DemoArmProperties $id @{ endpoints=$savedModels[$id] } }
             Write-Activity 'recovery-window' @{seconds=35}
-            Start-Sleep -Seconds 35
+            Wait-Scenario 35000
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'recovered')
             Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'recovered-secondary')
         }
@@ -140,6 +160,9 @@ try {
         }
     }
     $outcome = 'http-observed-awaiting-native-telemetry'
+} catch [OperationCanceledException] {
+    if (-not $StopPath -or -not (Test-Path -LiteralPath $StopPath)) { throw }
+    $outcome = 'stopped-by-operator'
 } finally {
     # Failure to publish progress must never prevent restoration.
     try { Write-Activity 'restoring' } catch { Write-Warning 'Could not publish restoration progress.' }

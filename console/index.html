@@ -95,9 +95,11 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <nav aria-label="Observabilite"><a id="gateway" target="_blank" rel="noopener">Dashboard AI Gateway &#8599;</a><a id="insights" target="_blank" rel="noopener">Application Insights &#8599;</a><a id="workbook" target="_blank" rel="noopener">Azure Workbook &#8599;</a></nav>
 <div id="error" role="alert"></div>
 <section class="card" aria-labelledby="scenarios"><h2 id="scenarios">Lancer un scénario</h2>
+<label for="scenario">Scénario à lancer</label>
 <div class="controls">
-<button disabled class="primary" data-scenario="baseline">Tester A et B</button><button disabled data-scenario="weighted-routing">Répartir le trafic 80/20</button><button disabled data-scenario="failover">Simuler une panne</button><button disabled data-scenario="token-rate">Tester la limite par minute</button><button disabled data-scenario="token-quota">Tester le quota horaire</button><button disabled data-scenario="reset">Rétablir le profil initial</button><button disabled title="Tarifs natifs incomplets (price_missing=true)">Budget monétaire indisponible</button>
-</div><p class="muted"><small>Un seul scénario à la fois, sans relance côté client. Le routage 80/20 envoie 50 appels espacés (environ 6 minutes). Les autres scénarios envoient 12 appels au maximum.</small></p>
+<select id="scenario" disabled><option value="baseline">Tester A et B</option><option value="weighted-routing">Répartir le trafic 80/20</option><option value="failover">Simuler une panne</option><option value="token-rate">Tester la limite par minute</option><option value="token-quota">Tester le quota horaire</option><option value="reset">Rétablir le profil initial</option><option disabled>Budget monétaire indisponible · tarifs incomplets</option></select>
+<button disabled id="start" class="primary">Start</button><button disabled id="stop">Stop</button>
+</div><p class="muted"><small>Start lance le scénario choisi. Stop laisse finir l’appel en cours, conserve les réponses et rétablit le profil initial. Le routage 80/20 prévoit 50 appels espacés ; les autres scénarios envoient 12 appels au maximum.</small></p>
 <label for="history">Exécution affichée </label><select id="history"><option>Aucune exécution</option></select>
 </section>
 <section class="live" aria-labelledby="live-title">
@@ -112,8 +114,8 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <footer><p class="muted"><small>HTTP, tokens et latence : observation immediate. Backend, origine du rejet et cout estime : telemetrie native differee, jamais inferes. Un resultat n'est certifie qu'apres verification des traces. Les limites peuvent etre depassees par un appel deja accepte. GlobalStandard ne garantit pas la residence regionale.</small></p><p id="security" class="muted"></p></footer>
 </main>
 <script>
-let state=null, selected=null, launching=false, awaitingJob=null, feedJob=null, feedCount=0, launchError="";
-const labels={configuring:"Préparation",running:"Exécution",complete:"Profil initial rétabli",verified:"Vérifié","awaiting-native":"Attente des traces",failed:"Échec · non certifié"};
+let state=null, selected=null, launching=false, awaitingJob=null, stopping=null, feedJob=null, feedCount=0, launchError="", stopError="";
+const labels={configuring:"Préparation",running:"Exécution",complete:"Profil initial rétabli",verified:"Vérifié","awaiting-native":"Attente des traces",stopped:"Arrêté · résultat partiel",failed:"Échec · non certifié"};
 const names={baseline:"Test A et B","weighted-routing":"Routage 80/20",failover:"Panne et récupération","token-rate":"Limite par minute","token-quota":"Quota horaire",reset:"Retour au profil initial"};
 const phases={healthy:"Vérifier l’accès au modèle",weighted:"Échantillonner le routage",primary:"Vérifier la route principale",secondary:"Vérifier la route secondaire",failover:"Tester la bascule",excluded:"Tester l’exclusion de la route défaillante","all-down":"Tester l’indisponibilité des deux routes",recovered:"Vérifier le retour de la route principale","recovered-secondary":"Vérifier le retour de la route secondaire","initial-A":"Vérifier l’accès initial de A","initial-B":"Vérifier l’accès initial de B","consume-A":"Consommer l’enveloppe de A","still-rejected":"Vérifier si A reste limitée","B-continues":"Vérifier si B peut continuer","alternate-rejected":"Tester la limite de A sur le second alias","B-alternate":"Tester l’accès de B sur le second alias"};
 const clock=new Intl.DateTimeFormat("fr-FR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
@@ -121,6 +123,8 @@ function describe(e,j){
   const call=`Appel ${e.number} · équipe ${e.team} → ${e.alias}`;
   switch(e.kind){
     case "accepted":return "La console a accepté le scénario.";
+    case "stop-requested":return "Arrêt demandé. L’opération en cours peut se terminer.";
+    case "stopped":return "Scénario arrêté. Profil initial rétabli, observations conservées.";
     case "identities":return "La console prépare les identités des équipes A et B.";
     case "checking-limits":return "Lecture des capacités Azure pour espacer les appels.";
     case "applying-profile":return `Configuration de la passerelle : ${names[j.scenario]}.`;
@@ -171,19 +175,22 @@ const el=id=>document.getElementById(id);
 function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function metric(parent,value,label){const n=node("div");n.append(node("strong",value),node("span",label));parent.append(n)}
 function render(){
-  text("status",state.busy?"Scénario en cours":state.ready?"Prêt pour la démo":"Initialisation");
+  const latest=state.jobs.at(-1);
+  text("status",state.busy&&latest?.stopRequested?"Arrêt en cours":state.busy?"Scénario en cours":state.ready?"Prêt pour la démo":"Initialisation");
   el("status").className="status "+(state.ready&&!state.busy?"success":"");
   for(const [id,url] of Object.entries(state.links))el(id).href=url;
   el("security").textContent=state.security;
   const jobs=state.jobs.slice().reverse();
   if(jobs.some(j=>j.id===awaitingJob)){selected=awaitingJob;awaitingJob=null}
-  for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=launching||awaitingJob!==null||state.busy||!state.ready;
+  el("start").disabled=el("scenario").disabled=launching||awaitingJob!==null||state.busy||!state.ready;
+  if(state.busy&&latest)el("scenario").value=latest.scenario;
   if(!jobs.some(j=>j.id===selected))selected=jobs[0]?.id;
   const history=el("history");history.replaceChildren();
   for(const j of jobs){const o=node("option",`${names[j.scenario]} · ${clock.format(new Date(j.startedAt*1000))} · ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
   if(!jobs.length)history.append(node("option","Aucune exécution"));
   const job=jobs.find(j=>j.id===selected);
-  el("error").textContent=state.error||launchError||job?.error||"";
+  el("stop").disabled=!state.busy||!job||job.id!==latest?.id||job.scenario==="reset"||!["configuring","running","awaiting-native"].includes(job.status)||job.stopRequested||stopping===job.id;
+  el("error").textContent=state.error||launchError||stopError||job?.error||"";
   showActivity(job);
   const native=new Map((job?.native||[]).map(r=>[r.TraceId,r]));
   for(const team of ["A","B"]){
@@ -209,14 +216,24 @@ function render(){
     }
   }
 }
-async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");for(const b of document.querySelectorAll("[data-scenario]"))b.disabled=true}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
-for(const b of document.querySelectorAll("[data-scenario]"))b.addEventListener("click",async()=>{
-  launching=true;launchError="";render();
-  try{const r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify({scenario:b.dataset.scenario})});if(!r.ok){const detail=await r.text();let msg;try{msg=JSON.parse(detail).error}catch{}throw Error(msg||`Lancement refusé (HTTP ${r.status}).`)}awaitingJob=(await r.json()).id}
+async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");el("start").disabled=el("stop").disabled=el("scenario").disabled=true}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
+async function command(path,body){
+  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify(body)});
+  if(!r.ok){const detail=await r.text();let msg;try{msg=JSON.parse(detail).error}catch{}throw Error(msg||`Commande refusée (HTTP ${r.status}).`)}
+  return r.json();
+}
+el("start").addEventListener("click",async()=>{
+  launching=true;launchError=stopError="";render();
+  try{awaitingJob=(await command("/api/run",{scenario:el("scenario").value})).id}
   catch(e){launchError=e.message;text("error",launchError);text("action","Lancement non confirmé. Vérifiez l’historique avant de réessayer.");}
   finally{launching=false}
 });
-el("history").addEventListener("change",e=>{launchError="";selected=e.target.value;render()});
+el("stop").addEventListener("click",async()=>{
+  const id=selected;stopping=id;stopError="";el("stop").disabled=true;
+  try{await command("/api/stop",{id});text("action","Arrêt demandé. Attente de la fin de l’opération en cours.")}
+  catch(e){stopping=null;stopError=e.message;text("error",stopError)}
+});
+el("history").addEventListener("change",e=>{launchError=stopError="";selected=e.target.value;render()});
 poll();
 </script>
 </body>

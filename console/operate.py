@@ -28,7 +28,7 @@ def maintenance():
     print("MAINTENANCE_READY", flush=True)
 
 
-def accept(live_only=False):
+def accept(live_only=False, stop_test=False):
     config = json.loads(os.environ["DEMO_CONFIG_JSON"])
     state = json.loads(os.environ["DEMO_STATE_JSON"])
     origin = config["consoleUrl"]
@@ -55,7 +55,8 @@ def accept(live_only=False):
         os.environ["OPERATOR_CLIENT_ID"], os.environ["CONSOLE_AUTH_RESOURCE"]))
     subprocess.run(["pwsh", "-NoLogo", "-NoProfile", "-File", "/app/scripts/verify-console.ps1",
                     "-Url", origin, "-OutputPath", "/tmp/console-acceptance.json",
-                    *(["-LiveBaselineOnly"] if live_only else [])], env=env, check=True)
+                    *(["-LiveBaselineOnly"] if live_only else []),
+                    *(["-StopAfterFirstResponse"] if stop_test else [])], env=env, check=True)
     evidence_path = Path("/tmp/console-acceptance.json")
     evidence = json.loads(evidence_path.read_text(encoding="utf-8-sig"))
     evidence["nativeAuthentication"] = statuses
@@ -70,5 +71,7 @@ if __name__ == "__main__":
         accept()
     elif sys.argv[1:] == ["accept-live"]:
         accept(live_only=True)
+    elif sys.argv[1:] == ["accept-stop"]:
+        accept(stop_test=True)
     else:
-        raise ValueError("Expected maintenance, accept or accept-live")
+        raise ValueError("Expected maintenance, accept, accept-live or accept-stop")
