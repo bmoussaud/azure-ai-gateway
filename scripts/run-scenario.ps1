@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Scenario,
     [ValidateRange(50,200)][int]$Samples = 100,
     [switch]$WorkshopRouting,
+    # The demo-alt alias stays deployed; its calls are opt-in CLI checks (both backends, no quota bypass by alias).
+    [switch]$IncludeAlternateAlias,
     [string]$BaselineEvidencePath,
     [string]$EventPath,
     [string]$ActivityPath,
@@ -35,6 +37,8 @@ if ($WorkshopRouting) {
 $requests = if ($Scenario -eq 'weighted-routing') { $Samples } elseif ($Scenario -eq 'failover') { 8 } else { 12 }
 if ($WorkshopRouting) { $requests = 10 }
 $attempts = if ($Scenario -eq 'failover') { 2 } else { 1 }
+# Native traces showed a simulated fault takes about 6-11 s to reach the gateway data plane after ARM confirms it.
+$faultPropagationSeconds = 20
 $estimate = Assert-DemoRunBudget $config $requests $attempts
 $delaySeconds = 0
 foreach ($project in $state.projects.Values) {
@@ -115,6 +119,8 @@ function Set-LabPathFault([int]$Backend) {
     }
     Write-Activity 'injecting' @{backend=$Backend}
     Set-DemoArmProperties $id @{ endpoints = @(@{ api='v1/chat/completions'; path='/demo-injected-unavailable' }) }
+    Write-Activity 'fault-propagation' @{backend=$Backend; seconds=$faultPropagationSeconds}
+    Wait-Scenario ($faultPropagationSeconds * 1000)
 }
 
 try {
@@ -129,8 +135,9 @@ try {
     }
     switch ($Scenario) {
         baseline {
+            $aliases = if ($IncludeAlternateAlias) { @('demo-chat','demo-alt') } else { @('demo-chat') }
             foreach ($team in @('A','B')) {
-                foreach ($alias in @('demo-chat','demo-alt')) { Assert-Completion (Send-ScenarioCall $team $alias 'healthy') }
+                foreach ($alias in $aliases) { Assert-Completion (Send-ScenarioCall $team $alias 'healthy') }
             }
         }
         weighted-routing {
@@ -138,10 +145,11 @@ try {
         }
         failover {
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'primary')
-            Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'secondary')
+            if ($IncludeAlternateAlias) { Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'secondary') }
             Set-LabPathFault 1
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'failover')
-            Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'excluded')
+            # Exclusion is a gateway-wide backend state, so team B also skips the failed backend.
+            Assert-Completion (Send-ScenarioCall ($IncludeAlternateAlias ? 'A' : 'B') 'demo-chat' 'excluded')
             Set-LabPathFault 2
             $failed = Send-ScenarioCall 'A' 'demo-chat' 'all-down'
             if ($failed.status -lt 400) { throw 'All-down must produce an explicit HTTP error.' }
@@ -150,7 +158,8 @@ try {
             Write-Activity 'recovery-window' @{seconds=35}
             Wait-Scenario 35000
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'recovered')
-            Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'recovered-secondary')
+            if ($IncludeAlternateAlias) { Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'recovered-secondary') }
+            else { Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'recovered') }
         }
         { $_ -in @('token-rate','token-quota','cost-limit') } {
             Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'initial-A')
@@ -165,9 +174,11 @@ try {
             $retry = Send-ScenarioCall 'A' 'demo-chat' 'still-rejected'
             if ($retry.status -lt 400) { throw 'Allowance was renewed or not yet consistently enforced.' }
             Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'B-continues')
-            $alternate = Send-ScenarioCall 'A' 'demo-alt' 'alternate-rejected'
-            if ($alternate.status -lt 400) { throw 'Allowance was bypassed, renewed, or not yet consistently enforced.' }
-            Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'B-alternate')
+            if ($IncludeAlternateAlias) {
+                $alternate = Send-ScenarioCall 'A' 'demo-alt' 'alternate-rejected'
+                if ($alternate.status -lt 400) { throw 'Allowance was bypassed, renewed, or not yet consistently enforced.' }
+                Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'B-alternate')
+            }
         }
     }
     $outcome = 'http-observed-awaiting-native-telemetry'
