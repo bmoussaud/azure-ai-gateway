@@ -246,6 +246,59 @@ class ConsoleDomTests(unittest.TestCase):
         finally:
             page.close()
 
+    def test_portal_shell_model_selection_copy_and_mobile_navigation_do_not_send_traffic(self):
+        page = self.caller_page()
+        writes = []
+        page.on("request", lambda request: writes.append(request.url)
+                if request.method == "POST" else None)
+        try:
+            page.evaluate("""() => {
+                state.busy=false;
+                state.gateway="demo.ai.gateway.azure.com";
+                state.links.gateway="https://ai.gateway.azure.com/subscriptions/test/aigateways/demo/workspaces/default/monitoring";
+                state.jobs[0].status="verified";
+                state.jobs[0].alias="scenario-identity";
+                render();
+            }""")
+            tiles = page.locator(".model-tile")
+            self.assertEqual(tiles.count(), 6)
+            self.assertNotIn("demo-alt", page.locator("#model-tiles").inner_text())
+            self.assertEqual(page.locator("#gateway-name").inner_text(), "demo")
+            page.locator('[data-scenario="identity-routing"]').click()
+            self.assertEqual(page.locator("#scenario").input_value(), "identity-routing")
+            self.assertEqual(page.locator('.model-tile[aria-pressed="true"]').count(), 1)
+            page.locator("#model-search").fill("token")
+            self.assertEqual(page.locator(".model-tile:visible").count(), 2)
+            page.locator("#model-search").fill("not-a-model")
+            self.assertTrue(page.locator("#model-empty").is_visible())
+            page.locator("#model-search").fill("")
+            page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+            page.locator("#copy-endpoint").click()
+            page.wait_for_function("el('copy-status').textContent.startsWith('Endpoint copié')")
+            self.assertEqual(page.evaluate("navigator.clipboard.readText()"),
+                             "https://demo.ai.gateway.azure.com")
+            self.assertIn("scenario-identity", page.locator("#recent-rows").inner_text())
+            page.locator("#recent-rows .run-link").click()
+            self.assertEqual(page.locator("#history").input_value(), "caller-run")
+            page.set_viewport_size({"width": 390, "height": 844})
+            self.assertFalse(page.locator("#portal-nav").is_visible())
+            page.locator("#nav-toggle").click()
+            self.assertTrue(page.locator("#portal-nav").is_visible())
+            self.assertEqual(page.locator("#nav-toggle").get_attribute("aria-expanded"), "true")
+            page.locator('.sidebar a[href="#journal"]').click()
+            self.assertFalse(page.locator("#portal-nav").is_visible())
+            self.assertEqual(page.locator('.sidebar a[aria-current="page"]').inner_text(), "Journal")
+            page.locator("#nav-toggle").click()
+            page.keyboard.press("Escape")
+            self.assertEqual(page.locator("#nav-toggle").get_attribute("aria-expanded"), "false")
+            self.assertEqual(page.evaluate("document.activeElement.id"), "nav-toggle")
+            self.assertTrue(page.evaluate("document.documentElement.scrollWidth<=window.innerWidth"))
+            page.evaluate("state.busy=true;state.jobs[0].status='running';render()")
+            self.assertEqual(page.locator(".model-tile:disabled").count(), 6)
+            self.assertFalse(writes, "Selecting models or browsing history must not send model traffic")
+        finally:
+            page.close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -36,6 +36,12 @@ Le [guide opérateur](docs/demo-guide.md) décrit l'authentification A/B, les sc
 
 La commande déploie une console Azure Container Apps avec les deux applications A/B et les boutons de scénarios. **Connexion Entra obligatoire, limitée à l'utilisateur opérateur et à l'identité managée d'acceptation**, sans consommation anonyme. La restriction IPv4 /32 du bootstrap n'est retirée qu'après vérification de cette protection native. Les identités et jetons d'inférence restent côté serveur. Les backends affichés proviennent des traces natives après ingestion ; le coût reste désactivé tant que sa tarification est incomplète. Le [guide](docs/demo-guide.md) détaille les droits de déploiement, la durée de validité du secret de connexion et le nettoyage.
 
+L'interface reprend le langage visuel du portail AI Gateway : navigation latérale,
+endpoint copiable, six tuiles de modèles et historique des exécutions.
+Il s'agit de la **console de démo**, pas du portail officiel. Choisir une tuile
+sélectionne le scénario ; seul Start lance les appels. La source A/B reste visible
+dans la carte en direct et dans le rejeu.
+
 ## Garde-fous
 
 Les scripts ciblent explicitement une souscription et un groupe `rg-aigw-demo-*` marqué pour cette gateway. Au plus dix appels séquentiels par scénario, sans retry client, corrélation W3C, sans conservation des prompts, réponses ou jetons. Chaque stratégie de tokens est propre à son alias, avec un compteur par identité authentifiée ; ce n'est pas un budget global partagé entre scénarios. Le runner vérifie que `demo-chat` et son ETag sont inchangés.

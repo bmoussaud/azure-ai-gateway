@@ -57,6 +57,28 @@ avant redémarrage. Une télémétrie absente ou retardée est inconnue, pas un 
 
 ### Voir quelle application appelle
 
+La console adopte le style du portail AI Gateway, sans logo ni asset copié et avec
+un libellé explicite **console de démo, pas le portail officiel**. La navigation
+latérale rejoint l'accueil, les modèles, les scénarios, la carte, le journal,
+le rejeu et les preuves ; sur mobile, le bouton menu la replie.
+Les six tuiles sélectionnent un scénario sans envoyer de trafic : cliquer ensuite
+sur **Start**. La recherche filtre ces tuiles, pas la configuration Azure.
+La carte de connexion copie l'endpoint public ; aucune clé ni jeton n'est exposé.
+Le tableau des cinq dernières exécutions ouvre leur carte et l'historique complet
+reste disponible dans le sélecteur « Exécution affichée ».
+
+La refonte visuelle est déployée sur la révision `0000019`, active et Healthy.
+Son HTML correspond exactement au fichier testé (SHA-256 comparé dans le conteneur).
+La recette HTTPS identité a confirmé dix HTTP 200, A 5/5 sur Backend 1,
+B 5/5 sur Backend 2, zéro retry client et les protections Entra/CSRF/concurrence.
+Les sept alias restent identiques, corps complets et ETags inclus.
+Preuves : `.demo\portal-identity-acceptance.json`, `.demo\portal-deployment.json`,
+`.demo\portal-aliases-before.json` et `.demo\portal-aliases-after.json`.
+Les captures desktop/mobile `.demo\portal-ui\portal-*.png` montrent le nouveau
+HTML en Chromium local avec les événements HTTPS réels de la recette `0000018`
+rejoués, notamment B à l'envoi, sans backend encore prouvé. Elles ne sont pas
+des captures d'une session navigateur Azure authentifiée en direct.
+
 Dès l'événement d'envoi, le bandeau affiche **En cours · appel N · Application
 A/B → Azure AI Gateway**, avec l'alias appelé. Le nœud source et son seul segment
 entrant sont mis en évidence ; les pointillés animés avancent vers la passerelle.
@@ -88,7 +110,7 @@ reçus ensemble, Stop, Start, rechargement et mouvement réduit. Le retour en ar
 dans un rejeu de dix appels retire toutes les lignes futures ; avancer les remet
 dans l'ordre, sans révéler prématurément leurs preuves.
 
-La console est déployée en révision prête `0000018`. La recette identité HTTPS
+La livraison du repère d'appelant a été déployée en révision prête `0000018`. La recette identité HTTPS
 de cette révision a confirmé A 5/5 sur Backend 1, B 5/5 sur Backend 2,
 dix HTTP 200 et zéro retry client, avec protection Entra/CSRF/concurrence conservée.
 Preuves locales : `.demo\caller-final-identity-acceptance.json`,
