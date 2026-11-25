@@ -473,6 +473,8 @@ function Invoke-DemoRequest {
         [ValidateRange(0,640)][int]$SyntheticInputMarkers = 0)
     $traceId = [guid]::NewGuid().ToString('N')
     $spanId = [guid]::NewGuid().ToString('N').Substring(0,16)
+    $started = [DateTimeOffset]::UtcNow
+    $httpStatus = 0
     $client = [Net.Http.HttpClient]::new()
     $client.Timeout = [TimeSpan]::FromSeconds(60)
     $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, $Endpoint)
@@ -486,6 +488,7 @@ function Invoke-DemoRequest {
     $timer = [Diagnostics.Stopwatch]::StartNew()
     try {
         $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        $httpStatus = [int]$response.StatusCode
         try {
             $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             $parsed = @{}
@@ -514,7 +517,16 @@ function Invoke-DemoRequest {
         } finally { $response.Dispose() }
     } catch {
         throw "Request failed; no client retry was made. Team=$Team phase=$Phase trace=$traceId. $($_.Exception.Message)"
-    } finally { $timer.Stop(); $request.Dispose(); $client.Dispose() }
+    } finally {
+        $timer.Stop(); $request.Dispose(); $client.Dispose()
+        if ($env:DEMO_CALLER_SPANS_PATH) {
+            # Measure in the actual ACA PowerShell emitter; export only this allowlisted span record.
+            @{ traceId=$traceId; spanId=$spanId; team=$Team; alias=$Alias
+                startedAt=$started.ToString('o'); endedAt=[DateTimeOffset]::UtcNow.ToString('o')
+                status=$httpStatus; durationMs=$timer.Elapsed.TotalMilliseconds } |
+                ConvertTo-Json -Compress | Add-Content -LiteralPath $env:DEMO_CALLER_SPANS_PATH
+        }
+    }
 }
 
 Export-ModuleMember -Function *

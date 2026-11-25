@@ -528,15 +528,24 @@ $null = $server.AddScript({
     } finally { $connection.Dispose() }
 }).AddArgument($listener).AddArgument($case.status).AddArgument($case.body)
 $handle=$server.BeginInvoke()
+$spanFile=[IO.Path]::GetTempFileName()
+$previousSpanPath=$env:DEMO_CALLER_SPANS_PATH
+$env:DEMO_CALLER_SPANS_PATH=$spanFile
 try {
     $r=Invoke-DemoRequest "http://127.0.0.1:$port/" 'demo-chat' 'synthetic-not-a-credential' A test
     $received=@($server.EndInvoke($handle))[0]
     Assert-True ($r.status -eq $case.status -and $r.completion -eq $case.completion -and $r.errorCode -eq $case.errorCode) 'HTTP failures or empty choices must not turn into successful completions.'
     Assert-True (@($received.headers | Where-Object { $_ -cmatch '^traceparent: 00-[0-9a-f]{32}-[0-9a-f]{16}-01$' }).Count -eq 1) 'A W3C trace context is required.'
+    $span=Get-Content -LiteralPath $spanFile -Raw | ConvertFrom-Json
+    Assert-True ($received.headers -ccontains "traceparent: 00-$($span.traceId)-$($span.spanId)-01") 'Measured caller span must preserve the exact outgoing W3C IDs.'
+    Assert-True ($span.status -eq $r.status -and $span.team -eq 'A' -and $span.alias -eq 'demo-chat') 'Measured caller span must describe the real HTTP response and caller.'
+    Assert-True (-not (Get-Content -LiteralPath $spanFile -Raw).Contains('synthetic-not-a-credential')) 'Caller spans must never retain credentials.'
     Assert-True (-not ($r | ConvertTo-Json -Depth 10).Contains('synthetic-not-a-credential')) 'Results must not retain bearer credentials.'
     Assert-True (-not $listener.Pending()) 'The client must not retry a failed HTTP request.'
     Assert-True (($received.body | ConvertFrom-Json).stream -eq $false) 'Demo requests must be nonstreaming.'
 } finally {
+    $env:DEMO_CALLER_SPANS_PATH=$previousSpanPath
+    Remove-Item -LiteralPath $spanFile -Force
     $listener.Stop()
     $server.Dispose()
 }

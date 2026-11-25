@@ -42,6 +42,12 @@ Il s'agit de la **console de démo**, pas du portail officiel. Choisir une tuile
 sélectionne le scénario ; seul Start lance les appels. La source A/B reste visible
 dans la carte en direct et dans le rejeu.
 
+Les appels de cette ACA sont aussi instrumentés en OpenTelemetry, avec des rôles
+Application A/B distincts dans Application Insights. Le SDK Azure Monitor conserve
+le `traceparent` envoyé à la gateway, utilise l'identité managée opérateur pour
+l'ingestion et n'exporte ni jetons ni contenu. Le [guide](docs/demo-guide.md)
+décrit l'activation et la preuve KQL de corrélation appelant → gateway.
+
 ## Garde-fous
 
 Les scripts ciblent explicitement une souscription et un groupe `rg-aigw-demo-*` marqué pour cette gateway. Au plus dix appels séquentiels par scénario, sans retry client, corrélation W3C, sans conservation des prompts, réponses ou jetons. Chaque stratégie de tokens est propre à son alias, avec un compteur par identité authentifiée ; ce n'est pas un budget global partagé entre scénarios. Le runner vérifie que `demo-chat` et son ETag sont inchangés.

@@ -72,6 +72,12 @@ class Console:
         self.config_path.write_text(json.dumps(config), encoding="utf-8")
         self.state_path.write_text(json.dumps(state), encoding="utf-8")
         self.env = dict(os.environ, DEMO_STATE_PATH=str(self.state_path))
+        self.caller_telemetry = None
+        if os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+            from caller_telemetry import CallerTelemetry
+            self.caller_telemetry = CallerTelemetry(
+                os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"], state["hostname"],
+                os.environ["OPERATOR_CLIENT_ID"])
 
     def command(self, script, *args):
         return ["pwsh", "-NoLogo", "-NoProfile", "-File", str(ROOT / "scripts" / script),
@@ -187,6 +193,13 @@ class Console:
                         raise TimeoutError("Scenario exceeded its thirty-minute server bound")
                     time.sleep(1)
                 self.observe(job, directory, seen)
+                if self.caller_telemetry and job["scenario"] != "reset":
+                    spans_path = directory / "caller-spans.jsonl"
+                    if job["requests"] and not spans_path.exists():
+                        raise RuntimeError("Caller span records missing for completed HTTP requests.")
+                    records = complete_records(spans_path) if spans_path.exists() else []
+                    self.caller_telemetry.export(records)
+                    job["callerTelemetry"] = {"exported": len(records), "source": "ACA PowerShell HttpClient"}
                 results = list(directory.glob("*.json"))
                 run = next((p for p in results if len(p.stem) == 32), None)
                 if run:

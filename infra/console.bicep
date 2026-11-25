@@ -31,6 +31,14 @@ resource operator 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
   location: location
   tags: tags
 }
+module callerMonitoring './console-monitoring.bicep' = {
+  name: 'console-caller-monitoring'
+  dependsOn: [operator]
+  params: {
+    prefix: prefix
+    insightsName: '${prefix}-insights'
+  }
+}
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: 'aigw${uniqueString(resourceGroup().id)}'
   location: location
@@ -137,6 +145,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = if (deployApp) {
           { name: 'DEMO_STATE_JSON', value: demoState }
           { name: 'DEMO_AUTH_MODE', value: authMode }
           { name: 'CONSOLE_AUTH_RESOURCE', value: authMode == 'entra' ? 'api://${authClientId}' : '' }
+          {
+            name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+            value: callerMonitoring.outputs.connectionString
+          }
         ]
         resources: { cpu: json('0.5'), memory: '1Gi' }
         probes: [

@@ -246,6 +246,53 @@ et de panne temporaire sont refusés ; tous les scénarios courants sont mono-al
 
 ## Application Insights et Workbook
 
+### Surveiller les applications appelantes ACA
+
+Le vrai émetteur des appels de cette console est le `HttpClient` PowerShell de
+`console-worker.ps1` / `run-scenario.ps1`, exécuté **dans la Container App**.
+Le runner ACI n'est pas utilisé par la console. Chaque appel produit un span
+OpenTelemetry **Client** mesuré au point d'envoi : mêmes `traceId` et `spanId`
+que le `traceparent` réellement transmis, statut HTTP et durée observés.
+Il n'y a pas de requête serveur ni de backend inventé pour dessiner une carte.
+
+Après la fin du sous-processus, Python exporte ces spans via le SDK Azure Monitor
+vers le composant Insights existant. `service.name` distingue les applications
+A et B de cette même ACA ; ce ne sont pas deux déploiements supplémentaires.
+Les dépendances arrivent dans `AppDependencies` (`dependencies` en requête
+Application Insights), tandis que la gateway conserve ses `OTelSpans` natifs.
+`observability/caller-map.kql` joint `OperationId` à `TraceId` et compare
+l'ID du span client au `ParentSpanId` de la gateway. La certification de scénario
+reste exclusivement fondée sur les traces natives gateway, pas sur ces spans clients.
+
+```powershell
+.\scripts\enable-console-monitoring.ps1 -ConfigPath .\config\demo.local.json
+```
+
+Le module Bicep `console-monitoring.bicep` accorde à l'identité opérateur seulement
+**Monitoring Metrics Publisher sur le composant Insights**. Le SDK utilise
+`ManagedIdentityCredential` avec cette identité. La connection string est une
+app setting obtenue d'ARM / sortie Bicep sécurisée ; `DisableLocalAuth=true`
+reste actif, donc la clé d'instrumentation ne permet pas une ingestion anonyme.
+Aucun droit sur les alias n'est modifié.
+
+Le groupe managé contenant le DCR natif refuse les ressources de déploiement
+par deny assignment. Cette protection reste intacte : le SDK officiel Azure Monitor
+utilise le composant Insights, sans déployer dans ce groupe ni modifier son DCR.
+Les spans excluent jetons, claims personnels, prompts et réponses. Un échec
+d'export est explicite et ne devient pas un succès ; aucun retry d'inférence
+n'est ajouté. L'export et le rafraîchissement de l'Application Map sont différés.
+
+Recette HTTPS observée sur la révision `0000021` : dix réponses 200, A 5/5
+sur Backend 1 et B 5/5 sur Backend 2, zéro retry client. Les dix dépendances
+ACA ingérées ont exactement le même `OperationId` que les traces gateway
+et le même ID que leur `ParentSpanId`. Les sept alias, corps et ETags,
+sont inchangés. Preuves locales ignorées par Git :
+`.demo\map-identity-acceptance.json`, `.demo\map-correlation.kql`,
+`.demo\map-correlation.json`, `.demo\map-revision-health.json`,
+`.demo\map-aliases-before.json` et `.demo\map-aliases-after.json`.
+L'apparition des nœuds dans le rendu visuel de l'Application Map n'a pas
+été observée : la corrélation KQL ne suffit pas à certifier ce rendu.
+
 L'intégration native est activée sur le composant workspace-based existant via
 `AzureMonitorWorkspaceIngestionMode: Enabled` (API `2020-02-02-preview`).
 Le composant publie son DCR et ses endpoints OTLP. La passerelle utilise
