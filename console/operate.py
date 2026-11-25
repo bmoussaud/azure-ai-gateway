@@ -28,7 +28,7 @@ def maintenance():
     print("MAINTENANCE_READY", flush=True)
 
 
-def accept(live_only=False, stop_test=False, routing_test=False):
+def accept(live_only=False, stop_test=False, routing_test=False, identity_test=False):
     config = json.loads(os.environ["DEMO_CONFIG_JSON"])
     state = json.loads(os.environ["DEMO_STATE_JSON"])
     origin = config["consoleUrl"]
@@ -57,7 +57,8 @@ def accept(live_only=False, stop_test=False, routing_test=False):
                     "-Url", origin, "-OutputPath", "/tmp/console-acceptance.json",
                     *(["-LiveBaselineOnly"] if live_only else []),
                     *(["-StopAfterFirstResponse"] if stop_test else []),
-                    *(["-WorkshopRoutingOnly"] if routing_test else [])], env=env, check=True)
+                    *(["-WorkshopRoutingOnly"] if routing_test else []),
+                    *(["-IdentityRoutingOnly"] if identity_test else [])], env=env, check=True)
     evidence_path = Path("/tmp/console-acceptance.json")
     evidence = json.loads(evidence_path.read_text(encoding="utf-8-sig"))
     evidence["nativeAuthentication"] = statuses
@@ -76,5 +77,7 @@ if __name__ == "__main__":
         accept(stop_test=True)
     elif sys.argv[1:] == ["accept-routing"]:
         accept(routing_test=True)
+    elif sys.argv[1:] == ["accept-identity"]:
+        accept(identity_test=True)
     else:
-        raise ValueError("Expected maintenance, accept, accept-live, accept-stop or accept-routing")
+        raise ValueError("Expected maintenance, accept, accept-live, accept-stop, accept-routing or accept-identity")

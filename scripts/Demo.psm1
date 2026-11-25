@@ -111,6 +111,8 @@ function Test-DemoSubset {
     if ($null -eq $Expected) { return $null -eq $Actual }
     if ($Expected -is [System.Collections.IDictionary]) {
         if ($Actual -isnot [System.Collections.IDictionary]) { return $false }
+        if ($Expected.Contains('resourceId') -and $Expected.Contains('priority') -and $Expected.Contains('weight') -and
+            -not $Expected.Contains('when') -and $Actual.Contains('when') -and $Actual.when) { return $false }
         foreach ($key in $Expected.Keys) {
             if ($key -eq 'policies' -and $Expected[$key] -is [array] -and $Expected[$key].Count -eq 0 -and -not $Actual.Contains($key)) { continue }
             if ($key -eq 'id' -and -not $Actual.Contains($key) -and $Expected.Contains('type') -and
@@ -215,21 +217,22 @@ function Get-DemoRuntimeEndpoint {
 
 function Reset-DemoLabFaults {
     param([hashtable]$State)
-    foreach ($backend in @(1,2)) {
-        $id = "$($State.workspaceId)/modelProviders/backend-$backend/models/demo-model"
-        $resource = Get-DemoArm $id
-        $mappings = @($resource.properties.endpoints)
-        if ($mappings.Count -ne 1 -or $mappings[0].api -ne 'v1/chat/completions' -or
-            $mappings[0].path -notin @('/openai/v1/chat/completions','/demo-injected-unavailable')) {
-            throw 'Unexpected model mapping. Reset refuses to overwrite a non-demo endpoint configuration.'
-        }
-        Set-DemoArmProperties $id @{ endpoints=@(@{api='v1/chat/completions';path='/openai/v1/chat/completions'}) }
-    }
+    throw 'Runtime configuration changes are retired. Redeploy Bicep to repair fixed models.'
 }
 
 function Read-DemoProfile {
-    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Name)
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Name)
     $json = Get-Content -LiteralPath (Join-Path $script:Root "config\profiles\$Name.json") -Raw
+    if ($Name -eq 'identity-routing') {
+        $tenant = Invoke-DemoAz @('account','show','--subscription',$Config.subscriptionId,'--query','tenantId')
+        $tenantId = [guid]::Empty
+        $objectId = [guid]::Empty
+        if (-not [guid]::TryParse([string]$tenant, [ref]$tenantId) -or $tenantId -eq [guid]::Empty -or
+            -not [guid]::TryParse([string]$Config.teamBObjectId, [ref]$objectId) -or $objectId -eq [guid]::Empty) {
+            throw 'Identity routing requires a verified subscription tenant and a nonempty B object ID.'
+        }
+        $json = $json.Replace('__TEAM_B_ENTRA_IDENTITY__', "$($tenantId.ToString()):$($objectId.ToString())")
+    }
     return $json.Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId) | ConvertFrom-Json -AsHashtable
 }
 
@@ -238,21 +241,26 @@ function Get-DemoAliasTargets {
     for ($i=0; $i -lt 2; $i++) {
         $priority = $Definition.backends[$i].priority
         if ($Alias -eq 'demo-alt' -and $Name -ne 'weighted-routing') { $priority = 1 - $priority }
-        @{ backend = $i + 1; priority = $priority; weight = $Definition.backends[$i].weight }
+        $target = @{ backend = $i + 1; priority = $priority; weight = $Definition.backends[$i].weight }
+        if ($Alias -ne 'demo-alt' -and $Definition.backends[$i].ContainsKey('when')) {
+            $target.when = $Definition.backends[$i].when
+        }
+        if ($Definition.backends[$i].ContainsKey('model')) { $target.model = $Definition.backends[$i].model }
+        if ($Definition.backends[$i].ContainsKey('provider')) { $target.provider = $Definition.backends[$i].provider }
+        $target
     }
 }
 
 function Get-DemoProfileSummary {
-    # Browser-safe explanation of exactly what Set-DemoProfile writes (no identity claims).
-    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Name)
+    # Browser-safe explanation of the fixed alias; no credentials or arbitrary claims.
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Name)
     $p = Read-DemoProfile $Config $Name
-    $routes = @(foreach ($alias in @('demo-chat','demo-alt')) {
-        @{ alias = $alias; targets = @(Get-DemoAliasTargets $p $Name $alias) }
-    })
+    if (-not $p.ContainsKey('alias')) { throw 'This scenario has no deployed fixed alias. Cost remains disabled.' }
+    $routes = @(@{ alias = $p.alias; targets = @(Get-DemoAliasTargets $p $Name $p.alias) })
     $failures = @(foreach ($rule in @($p.failures)) {
         @{ noResponse = $rule.when -match 'response == null'
            statusCodes = @([regex]::Matches($rule.when, '\b[1-5]\d\d\b') | ForEach-Object { [int]$_.Value })
-           excludeSeconds = [int][Xml.XmlConvert]::ToTimeSpan($rule.excludeFor).TotalSeconds }
+           excludeSeconds = $(if ($rule.ContainsKey('excludeFor')) { [int][Xml.XmlConvert]::ToTimeSpan($rule.excludeFor).TotalSeconds } else { 0 }) }
     })
     $policies = @(foreach ($policy in @($p.policies)) {
         $summary = @{ type = $policy.type; period = $policy.period; counterKey = @($policy.counterKey); scope = $policy.scope }
@@ -263,49 +271,43 @@ function Get-DemoProfileSummary {
     return @{ profile = $Name; routes = $routes; maxRetryAttempts = $p.maxRetryAttempts; failures = $failures; policies = $policies }
 }
 
-function Set-DemoProfile {
-    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Profile)
-    Assert-DemoGroup $Config
+function Get-DemoScenarioProperties {
+    param([hashtable]$Config, [string]$Scenario)
+    $p = Read-DemoProfile $Config $Scenario
+    if (-not $p.ContainsKey('alias')) { throw 'This scenario has no deployed fixed alias. Cost remains disabled.' }
     $ids = Get-DemoIds $Config
-    $p = Read-DemoProfile $Config $Profile
-    $workspace = Get-DemoArmEnvelope $ids.workspace
-    $existingPolicies = if ($workspace.body.properties.ContainsKey('policies')) { @($workspace.body.properties.policies) } else { @() }
-    $knownPolicies = foreach ($file in Get-ChildItem (Join-Path $script:Root 'config\profiles') -Filter '*.json') {
-        $profileJson = (Get-Content -LiteralPath $file.FullName -Raw).Replace('__TEAM_A_OBJECT_ID__',$Config.teamAObjectId)
-        ($profileJson | ConvertFrom-Json -AsHashtable).policies
+    $targets = @(foreach ($target in Get-DemoAliasTargets $p $Scenario $p.alias) {
+        $model = if ($target.ContainsKey('model')) { $target.model } else { 'demo-model' }
+        $provider = if ($target.ContainsKey('provider')) { $target.provider } else { "backend-$($target.backend)" }
+        $mapping = @{resourceId="$($ids.workspace)/modelProviders/$provider/models/$model"
+            priority=$target.priority;weight=$target.weight}
+        if ($target.ContainsKey('when')) { $mapping.when=$target.when }
+        $mapping
+    })
+    $properties = @{aliasName=$p.alias;backendModels=$targets;selectionOrder=@('priority')
+        failures=@($p.failures);policies=@($p.policies)}
+    if (@($p.failures).Count) { $properties.maxRetryAttempts = $p.maxRetryAttempts }
+    return $properties
+}
+
+function Assert-DemoFixedScenario {
+    param([hashtable]$Config, [string]$Scenario)
+    $ids = Get-DemoIds $Config
+    $expected = Get-DemoScenarioProperties $Config $Scenario
+    $workspace = Get-DemoArm $ids.workspace
+    if ($workspace.properties.ContainsKey('policies') -and @($workspace.properties.policies).Count) {
+        throw 'Fixed scenarios require no inherited workspace policy. Deploy the fixed configuration first.'
     }
-    foreach ($existing in $existingPolicies) {
-        $known = $false
-        foreach ($candidate in $knownPolicies) {
-            $expectedPolicy = $candidate.Clone()
-            $actualPolicy = $existing.Clone()
-            if ($actualPolicy.ContainsKey('id') -and $actualPolicy.id -cne $expectedPolicy.id) { continue }
-            $expectedPolicy.Remove('id')
-            $actualPolicy.Remove('id')
-            if ((Test-DemoSubset $expectedPolicy $actualPolicy) -and (Test-DemoSubset $actualPolicy $expectedPolicy)) {
-                $known = $true
-                break
-            }
-        }
-        if (-not $known) { throw 'Unexpected workspace policies: refusing to replace another configuration.' }
+    $read = Get-DemoArm "$($ids.workspace)/aliases/$($expected.aliasName)"
+    if (-not (Test-DemoSubset $expected $read.properties)) {
+        throw "Fixed alias $($expected.aliasName) differs from its versioned definition. Deploy before the demonstration."
     }
-    Set-DemoArmProperties $ids.workspace @{ policies = @($p.policies) } -Current $workspace
-    foreach ($alias in @('demo-chat','demo-alt')) {
-        $targets = foreach ($target in Get-DemoAliasTargets $p $Profile $alias) {
-            @{ resourceId = "$($ids.workspace)/modelProviders/backend-$($target.backend)/models/demo-model"
-               priority = $target.priority; weight = $target.weight }
-        }
-        $properties = @{
-            aliasName = $alias; backendModels = @($targets); selectionOrder = @('priority')
-            failures = @($p.failures); policies = @()
-        }
-        if ($p.failures.Count) { $properties.maxRetryAttempts = $p.maxRetryAttempts }
-        Set-DemoArmProperties "$($ids.workspace)/aliases/$alias" $properties -Method put
-        $read = Get-DemoArm "$($ids.workspace)/aliases/$alias"
-        if (-not $p.failures.Count -and $read.properties.ContainsKey('maxRetryAttempts') -and $read.properties.maxRetryAttempts -gt 0) {
-            throw 'Alias replacement did not clear the previous attempt budget.'
-        }
-    }
+    return $expected.aliasName
+}
+
+function Set-DemoProfile {
+    param([hashtable]$Config, [ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Profile)
+    throw 'Runtime configuration changes are retired. Deploy fixed aliases with Bicep; configure.ps1 now verifies them.'
 }
 
 function Get-DemoRequestsQuery {
@@ -319,6 +321,40 @@ function Get-DemoRequestsQuery {
         Replace('__GATEWAY_ID__', $State.gatewayId).
         Replace('__INSIGHTS_ID__', $State.insightsId).
         Replace('__GATEWAY_HOSTNAME__', $State.hostname)
+}
+
+function Assert-DemoIdentityRouting {
+    param([hashtable]$Run, [array]$Rows)
+    if ($Run.clientRetries -ne 0 -or $Run.concurrency -ne 1 -or $Run.minimumInterRequestSpacingSeconds -gt 2 -or
+        $Run.restorationFailures.Count -or $Run.results.Count -gt 10 -or
+        @($Run.results | Where-Object alias -CNE $Run.alias).Count) {
+        throw 'Identity routing requires bounded fixed-alias calls, no client retry and unchanged configuration.'
+    }
+    $negative = [bool]$Run['identityBackendFault']
+    if ($Run.results.Count -ne $(if ($negative) { 4 } else { 10 }) -or
+        @($Run.results | Where-Object team -CEQ 'A').Count -ne $(if ($negative) { 2 } else { 5 }) -or
+        @($Run.results | Where-Object team -CEQ 'B').Count -ne $(if ($negative) { 2 } else { 5 })) {
+        throw 'Identity routing did not produce the complete expected A/B sample.'
+    }
+    foreach ($result in $Run.results) {
+        $matched = @($Rows | Where-Object TraceId -CEQ $result.traceId)
+        if ($matched.Count -ne 1) { throw 'Identity routing needs exactly one native row per trace.' }
+        $row = $matched[0]
+        $expected = if ($result.team -ceq 'B') { 'backend-2/demo-model' } else { 'backend-1/demo-model' }
+        if ($row.Backend -cne $expected -or [int]$row.Attempts -ne 1) {
+            throw 'Identity routing violated the intended backend pin or made another backend send.'
+        }
+        if ($negative -and $result.phase -ceq 'pinned-unavailable') {
+            if ($result.team -cne 'B' -or $result.status -lt 400 -or $result.completion) {
+                throw 'The hard-pin negative check needs an explicit B error, not a completion.'
+            }
+        } elseif (-not $result.completion -or $result.status -ne 200) {
+            throw 'Identity routing control/healthy calls must all complete with HTTP 200.'
+        }
+    }
+    if ($negative -and @($Run.results | Where-Object phase -CEQ 'pinned-unavailable').Count -ne 1) {
+        throw 'Missing unique backend-2-down hard-pin observation.'
+    }
 }
 
 function Invoke-DemoQuery {
@@ -437,6 +473,8 @@ function Invoke-DemoRequest {
         [ValidateRange(0,640)][int]$SyntheticInputMarkers = 0)
     $traceId = [guid]::NewGuid().ToString('N')
     $spanId = [guid]::NewGuid().ToString('N').Substring(0,16)
+    $started = [DateTimeOffset]::UtcNow
+    $httpStatus = 0
     $client = [Net.Http.HttpClient]::new()
     $client.Timeout = [TimeSpan]::FromSeconds(60)
     $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, $Endpoint)
@@ -450,6 +488,7 @@ function Invoke-DemoRequest {
     $timer = [Diagnostics.Stopwatch]::StartNew()
     try {
         $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        $httpStatus = [int]$response.StatusCode
         try {
             $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             $parsed = @{}
@@ -478,7 +517,16 @@ function Invoke-DemoRequest {
         } finally { $response.Dispose() }
     } catch {
         throw "Request failed; no client retry was made. Team=$Team phase=$Phase trace=$traceId. $($_.Exception.Message)"
-    } finally { $timer.Stop(); $request.Dispose(); $client.Dispose() }
+    } finally {
+        $timer.Stop(); $request.Dispose(); $client.Dispose()
+        if ($env:DEMO_CALLER_SPANS_PATH) {
+            # Measure in the actual ACA PowerShell emitter; export only this allowlisted span record.
+            @{ traceId=$traceId; spanId=$spanId; team=$Team; alias=$Alias
+                startedAt=$started.ToString('o'); endedAt=[DateTimeOffset]::UtcNow.ToString('o')
+                status=$httpStatus; durationMs=$timer.Elapsed.TotalMilliseconds } |
+                ConvertTo-Json -Compress | Add-Content -LiteralPath $env:DEMO_CALLER_SPANS_PATH
+        }
+    }
 }
 
 Export-ModuleMember -Function *

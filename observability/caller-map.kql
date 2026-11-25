@@ -1,0 +1,22 @@
+// Workspace dependencies: AppRoleName maps to cloud_RoleName, OperationId to operation_Id.
+let Insights = '__INSIGHTS_ID__';
+let Caller = AppDependencies
+| where TimeGenerated > ago(1h) and _ResourceId =~ Insights
+| where tostring(Properties["demo.emitter"]) == "ACA PowerShell HttpClient"
+| project operation_Id=OperationId, CallerSpanId=Id,
+    cloud_RoleName=AppRoleName,
+    Application=tostring(Properties["demo.application"]),
+    Alias=tostring(Properties["gen_ai.request.model"]),
+    DependencyTarget=Target,
+    CallerHttpStatus=toint(ResultCode);
+let Gateway = OTelSpans
+| where TimeGenerated > ago(1h) and _ResourceId =~ Insights
+| where Kind == "Server" and ScopeName startswith "Microsoft.Azure.ApiManagement.Gateway."
+| where isnotempty(Attributes["http.response.status_code"])
+| project operation_Id=TraceId, GatewaySpanId=SpanId, GatewayParentId=ParentSpanId,
+    GatewayHttpStatus=toint(Attributes["http.response.status_code"]);
+Caller
+| join kind=leftouter Gateway on operation_Id
+| extend ParentMatches=CallerSpanId == GatewayParentId
+| project cloud_RoleName, Application, Alias, operation_Id, CallerSpanId,
+    DependencyTarget, CallerHttpStatus, GatewaySpanId, GatewayParentId, GatewayHttpStatus, ParentMatches

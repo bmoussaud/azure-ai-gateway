@@ -14,13 +14,29 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent.parent
-SCENARIOS = frozenset(("baseline", "weighted-routing", "failover", "token-rate", "token-quota", "reset"))
+SCENARIOS = frozenset(("baseline", "weighted-routing", "failover", "identity-routing", "token-rate", "token-quota", "reset"))
 
 
 def complete_records(path):
     # One snapshot: a trailing partial write (including a split UTF-8 character) waits until next poll.
     data = path.read_bytes()
     return [json.loads(line) for line in data.split(b"\n")[:-1] if line.strip()]
+
+
+def native_join_complete(requests, rows, scenario):
+    by_trace = {row["TraceId"]: row for row in rows}
+    if len(by_trace) != len(requests) or len(rows) != len(requests):
+        return False
+    for request in requests:
+        row = by_trace.get(request["traceId"], {})
+        if not row.get("Alias") or not row.get("Identity") or row.get("HttpStatus") is None:
+            return False
+        if request.get("completion") and (not row.get("Backend") or not row.get("Attempts")):
+            return False
+        if (scenario in ("token-rate", "token-quota") and request["status"] >= 400
+                and not row.get("RejectedPolicy")):
+            return False
+    return True
 
 
 def managed_token(client_id, resource):
@@ -56,6 +72,12 @@ class Console:
         self.config_path.write_text(json.dumps(config), encoding="utf-8")
         self.state_path.write_text(json.dumps(state), encoding="utf-8")
         self.env = dict(os.environ, DEMO_STATE_PATH=str(self.state_path))
+        self.caller_telemetry = None
+        if os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+            from caller_telemetry import CallerTelemetry
+            self.caller_telemetry = CallerTelemetry(
+                os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"], state["hostname"],
+                os.environ["OPERATOR_CLIENT_ID"])
 
     def command(self, script, *args):
         return ["pwsh", "-NoLogo", "-NoProfile", "-File", str(ROOT / "scripts" / script),
@@ -66,7 +88,7 @@ class Console:
             login = ["az", "login", "--identity", "--client-id", os.environ["OPERATOR_CLIENT_ID"],
                      "--allow-no-subscriptions", "--output", "none", "--only-show-errors"]
             subprocess.run(login, env=self.env, check=True, timeout=90, stdout=subprocess.DEVNULL)
-            # Repair recognized lab faults after a container restart before admitting new scenarios.
+            # Read-only validation: scenario execution never needs an ARM write permission.
             subprocess.run(self.command("reset-demo.ps1"), env=self.env, check=True, timeout=360)
             self.ready = True
         except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -77,7 +99,7 @@ class Console:
         if scenario not in SCENARIOS:
             return 400, {"error": "Unsupported scenario. Cost remains non-qualified and disabled."}
         if not self.ready:
-            return 503, {"error": self.error or "Initializing managed identity and restoring baseline."}
+            return 503, {"error": self.error or "Initializing managed identity and checking fixed aliases."}
         if not self.lock.acquire(blocking=False):
             return 409, {"error": "One scenario is already running. No traffic was added."}
         if not self.ready:
@@ -89,7 +111,8 @@ class Console:
         self.last_start = time.monotonic()
         job = {"id": uuid.uuid4().hex, "scenario": scenario, "status": "configuring",
                "startedAt": time.time(), "requests": [], "native": [], "activity": [], "error": None,
-               "clientRetries": 0, "concurrency": 1, "restored": False, "stopRequested": False,
+               "clientRetries": 0, "concurrency": 1, "restored": True, "stopRequested": False,
+               "configurationMode": "fixed-alias", "configurationUnchanged": None, "alias": None,
                "requestCeiling": None, "minimumSpacingSeconds": None, "finishedAt": None}
         self.note(job, "accepted")
         with self.guard:
@@ -151,7 +174,7 @@ class Console:
                     env[f"DEMO_TEAM_{team}_TOKEN"] = managed_token(
                         self.state["callerIdentities"][team]["clientId"], "https://ai.gateway.azure.com")
             else:
-                self.note(job, "restoring")
+                self.note(job, "checking-models")
             with (directory / "worker.log").open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(self.command("console-worker.ps1", "-Scenario", job["scenario"],
                                                        "-OutputDirectory", directory),
@@ -170,11 +193,20 @@ class Console:
                         raise TimeoutError("Scenario exceeded its thirty-minute server bound")
                     time.sleep(1)
                 self.observe(job, directory, seen)
+                if self.caller_telemetry and job["scenario"] != "reset":
+                    spans_path = directory / "caller-spans.jsonl"
+                    if job["requests"] and not spans_path.exists():
+                        raise RuntimeError("Caller span records missing for completed HTTP requests.")
+                    records = complete_records(spans_path) if spans_path.exists() else []
+                    self.caller_telemetry.export(records)
+                    job["callerTelemetry"] = {"exported": len(records), "source": "ACA PowerShell HttpClient"}
                 results = list(directory.glob("*.json"))
                 run = next((p for p in results if len(p.stem) == 32), None)
                 if run:
                     observed = json.loads(run.read_text(encoding="utf-8-sig"))
-                    job["restored"] = not observed["restorationFailures"]
+                    job["restored"] = observed["configurationUnchanged"] and not observed["restorationFailures"]
+                    job["configurationUnchanged"] = observed["configurationUnchanged"]
+                    job["alias"] = observed["alias"]
                     job["requestCeiling"] = observed["requestCeiling"]
                     job["minimumSpacingSeconds"] = observed["minimumInterRequestSpacingSeconds"]
                 if process.returncode:
@@ -183,7 +215,7 @@ class Console:
                     return
                 if job["scenario"] == "reset":
                     job.update(status="complete", restored=True)
-                    self.note(job, "restored")
+                    self.note(job, "configuration-unchanged")
                     return
                 job["status"] = "awaiting-native"
                 self.note(job, "awaiting-traces")
@@ -201,7 +233,7 @@ class Console:
                     job["native"] = native
                     if self.stop_signal.is_set():
                         return
-                    if len(job["native"]) == len(job["requests"]):
+                    if native_join_complete(job["requests"], job["native"], job["scenario"]):
                         self.note(job, "verifying")
                         verified = subprocess.run(self.command("verify-results.ps1", "-ResultsPath", run),
                                                   env=self.env, stdout=log, stderr=subprocess.STDOUT, timeout=90)
@@ -221,18 +253,12 @@ class Console:
             job["error"] = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else type(error).__name__
             print(f"Job {job['id']} failed: {job['error']}", flush=True)
         finally:
-            # Even a killed worker must not leave the live gateway in a fault/governance profile.
+            # Never repair by writing ARM: all scenario routes and policies remain fixed.
             if not job["restored"]:
-                self.note(job, "repair")
-                try:
-                    repair = subprocess.run(self.command("reset-demo.ps1"), env=self.env, check=True, timeout=360)
-                    job["restored"] = repair.returncode == 0
-                    self.note(job, "restored")
-                except (OSError, subprocess.SubprocessError):
-                    job["status"] = "failed"
-                    job["error"] = "BASELINE RESTORATION FAILED. Controls locked; operator reset required."
-                    self.ready = False
-                    self.note(job, "repair-failed")
+                job["status"] = "failed"
+                job["error"] = "FIXED CONFIGURATION CHANGED. Controls locked; operator inspection required."
+                self.ready = False
+                self.note(job, "configuration-changed")
             job["finishedAt"] = time.time()
             try:
                 with self.guard:

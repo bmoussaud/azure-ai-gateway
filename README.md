@@ -1,10 +1,48 @@
 # Démo Azure AI Gateway
 
-Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans service APIM classique ni policies XML. Deux modèles Azure réels derrière des alias stables, deux identités Entra A/B, routage pondéré 80/20, failover, limites de tokens et de coût, télémétrie native et Azure Monitor Workbook.
+Démo technique du **nouveau `Microsoft.ApiManagement/aigateways`**, sans service APIM classique ni policies XML. Deux modèles Azure réels derrière des alias stables, deux identités Entra A/B, routage pondéré 80/20 ou conditionnel par identité, failover, limites de tokens et de coût, télémétrie native et Azure Monitor Workbook.
 
-**État : déployé et vérifié dans Azure : baseline A/B, routage 40/50–10/50, failover/récupération et limites de tokens minute/heure.** La limite de coût reste bloquée par le signal natif de tarification incomplète ; elle n'est pas certifiée. Pour une nouvelle cible, aucune région, capacité ou disponibilité de modèle n'est présumée.
+**Architecture : un alias fixe par scénario**, déclaré en Bicep. Pendant la démo, seule la valeur `model` de l'appel change ; aucune route ni stratégie n'est réécrite. Le diagramme est entièrement vidé au démarrage. La limite de coût reste désactivée (`price_missing=true`). Pour une nouvelle cible, aucune région, capacité ou disponibilité de modèle n'est présumée.
+
+Le scénario **Identité de l’appelant · B → Backend 2** appelle `scenario-identity`. Sa condition CEL utilise l'identité Entra validée, pas un header libre. La qualification précédente sur alias reconfiguré a prouvé A 5/5 sur Backend 1, B 5/5 sur Backend 2 et l'absence de bascule de B sous panne ; elle ne remplace pas la recette de cette nouvelle architecture.
+
+La recette HTTPS des alias fixes a confirmé : référence A/B 2/2, pondération observée 8/10–2/10, quatre bascules natives après une première tentative 404 sur le fournisseur dédié, A refusée en minute/heure pendant que B continue, identité A 5/5 Backend 1 et B 5/5 Backend 2. Les preuves et la distinction entre première vérification et relecture après ingestion sont décrites dans le guide.
 
 Application Insights est activé sur le composant existant et lié au DCR natif reconnu par le portail. Une nouvelle baseline A/B a été vérifiée dans ses logs et traces natifs ; l'affichage visuel de la bannière du portail n'a pas été observé.
+
+## Aperçu
+
+### Console desktop
+
+L'Atelier A/B rassemble les six modèles de scénario, l'endpoint copiable,
+les contrôles Start/Stop et l'historique des exécutions. Son apparence s'inspire
+du portail AI Gateway, mais **ce n'est pas le portail Azure officiel**.
+
+![Accueil desktop de la console de démo avec les six alias de scénario et une exécution identité vérifiée](docs/images/console-desktop-overview.png)
+
+### Identité de l'application appelante
+
+Dans le scénario `scenario-identity`, l'application B est visible dès l'envoi.
+La condition CEL exclut B du Backend 1 ; Backend 2 reste seul éligible.
+La carte distingue cette **règle prévue** du **backend réellement confirmé**
+par une trace native jointe au même appel.
+
+![Rejeu du scénario identité : application B émet l'appel 2 vers la gateway, Backend 1 exclut B par CEL et le backend servi attend encore sa preuve native](docs/images/console-desktop-identity-B.png)
+
+Ces captures ont été réalisées dans Chromium local. Le scénario identité rejoue
+des événements enregistrés lors d'une recette HTTPS réelle : à l'instant montré,
+B émet l'appel 2 et **son backend n'est pas encore prouvé**. Le rejeu n'envoie
+aucune nouvelle requête. Ces images illustrent la console, pas un portail Azure
+live ni l'état actuel du service.
+
+<details>
+<summary>Aperçu mobile : navigation repliable et cartes empilées</summary>
+
+<p>La même console s'adapte aux écrans étroits ; les cartes et les commandes restent accessibles.</p>
+
+<img src="docs/images/console-mobile-overview.png" alt="Accueil mobile de la console avec menu repliable, endpoint et cartes de scénarios et de preuves" width="390">
+
+</details>
 
 ## Utilisation
 
@@ -32,11 +70,23 @@ Le [guide opérateur](docs/demo-guide.md) décrit l'authentification A/B, les sc
 
 La commande déploie une console Azure Container Apps avec les deux applications A/B et les boutons de scénarios. **Connexion Entra obligatoire, limitée à l'utilisateur opérateur et à l'identité managée d'acceptation**, sans consommation anonyme. La restriction IPv4 /32 du bootstrap n'est retirée qu'après vérification de cette protection native. Les identités et jetons d'inférence restent côté serveur. Les backends affichés proviennent des traces natives après ingestion ; le coût reste désactivé tant que sa tarification est incomplète. Le [guide](docs/demo-guide.md) détaille les droits de déploiement, la durée de validité du secret de connexion et le nettoyage.
 
+L'interface reprend le langage visuel du portail AI Gateway : navigation latérale,
+endpoint copiable, six tuiles de modèles et historique des exécutions.
+Il s'agit de la **console de démo**, pas du portail officiel. Choisir une tuile
+sélectionne le scénario ; seul Start lance les appels. La source A/B reste visible
+dans la carte en direct et dans le rejeu.
+
+Les appels de cette ACA sont aussi instrumentés en OpenTelemetry, avec des rôles
+Application A/B distincts dans Application Insights. Le SDK Azure Monitor conserve
+le `traceparent` envoyé à la gateway, utilise l'identité managée opérateur pour
+l'ingestion et n'exporte ni jetons ni contenu. Le [guide](docs/demo-guide.md)
+décrit l'activation et la preuve KQL de corrélation appelant → gateway.
+
 ## Garde-fous
 
-Les scripts ciblent explicitement une souscription et un groupe `rg-aigw-demo-*` marqué pour cette gateway. Les requêtes sont séquentielles, bornées, sans retry client, avec corrélation W3C et sans conservation des prompts, réponses ou jetons d'accès. Les compteurs utilisent l'identité authentifiée, jamais un header client libre. La configuration est relue après modification et protégée par ETag.
+Les scripts ciblent explicitement une souscription et un groupe `rg-aigw-demo-*` marqué pour cette gateway. Au plus dix appels séquentiels par scénario, sans retry client, corrélation W3C, sans conservation des prompts, réponses ou jetons. Chaque stratégie de tokens est propre à son alias, avec un compteur par identité authentifiée ; ce n'est pas un budget global partagé entre scénarios. Le runner vérifie que `demo-chat` et son ETag sont inchangés.
 
-Le failover utilise une **mauvaise route backend injectée pour le laboratoire**, pas une panne régionale simulée par une fonction native du produit. Le coût affiché est une estimation, pas une facture ni un plafond financier strict. Un prix manquant peut rendre la limite de coût permissive ; le runner refuse ce scénario sans preuve de tarification native complète.
+Le failover utilise un **fournisseur de laboratoire dédié en panne permanente**, sans toucher aux modèles des autres alias. Il ne démontre ni récupération ni panne régionale. Stop et « Vérifier les modèles fixes » ne remettent pas les compteurs Azure à zéro. Le coût affiché reste une estimation, pas une facture ni un plafond financier strict.
 
 Le déploiement utilise des endpoints publics ; les modèles Foundry désactivent l'authentification par clé. `GlobalStandard` ne garantit pas la résidence régionale. Les ressources et leur télémétrie peuvent être facturées hors trafic : nettoyer le groupe dédié après la démo.
 

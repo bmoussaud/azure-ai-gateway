@@ -28,6 +28,6 @@ try {
     Set-DemoInsightsPublisher $config $state
     $gateway = Get-DemoArm $state.gatewayId
     if ($gateway.properties.provisioningState -ne 'Succeeded' -or -not $state.hostname) { throw 'Gateway is not ready.' }
-    Set-DemoProfile $config baseline
-    Write-Host 'Infrastructure and baseline configuration read back. No live inference or telemetry validation has been claimed.'
+    & (Join-Path $PSScriptRoot 'reset-demo.ps1') -ConfigPath $ConfigPath
+    Write-Host 'Infrastructure and fixed scenario aliases read back. No live inference or telemetry validation has been claimed.'
 } finally { Remove-Item -LiteralPath $file -Force }

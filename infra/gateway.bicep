@@ -78,36 +78,86 @@ resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mo
   dependsOn: [providers]
 }]
 
-var aliasNames = ['demo-chat', 'demo-alt']
+// Same versioned definitions are read by the CLI and the console, never applied during a run.
+var baseline = loadJsonContent('../config/profiles/baseline.json')
+var scenarios = [
+  baseline
+  union(baseline, { alias: 'demo-alt' })
+  loadJsonContent('../config/profiles/weighted-routing.json')
+  loadJsonContent('../config/profiles/failover.json')
+  loadJsonContent('../config/profiles/token-quota.json')
+  loadJsonContent('../config/profiles/token-rate.json')
+  loadJsonContent('../config/profiles/identity-routing.json')
+]
 
 #disable-next-line BCP081
-resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for alias in aliasNames: {
+resource faultProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: workspace
-  name: alias
+  name: 'backend-fault'
   properties: {
-    aliasName: alias
-    backendModels: [for (project, i) in projects: {
-      resourceId: resourceId('Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models', gatewayName, 'default', 'backend-${i + 1}', 'demo-model')
-      priority: alias == 'demo-alt' ? 1 - i : i
-      weight: 1
+    modelProviderType: 'Foundry'
+    displayName: 'Permanent simulated bad route - failover only'
+    foundry: {
+      endpoint: {
+        url: uri(projects[0].endpoint, 'demo-injected-unavailable/')
+      }
+      resourceIds: [projects[0].accountId]
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com'
+      }
+    }
+  }
+  dependsOn: [backendRoles]
+}
+
+#disable-next-line BCP081
+resource unavailable 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
+  name: '${gatewayName}/default/backend-fault/demo-unavailable'
+  properties: {
+    displayName: 'Permanent simulated fault - failover scenario only'
+    deployment: {
+      resourceId: projects[0].deploymentId
+      modelName: projects[0].deploymentName
+      modelVersion: projects[0].modelVersion
+    }
+    supportedEndpoints: ['/openai/v1/chat/completions']
+    endpoints: [{
+      api: 'v1/chat/completions'
+      path: '/openai/v1/chat/completions'
     }]
-    selectionOrder: ['priority']
-    failures: []
     policies: []
   }
-  dependsOn: [models]
+  dependsOn: [faultProvider]
+}
+
+#disable-next-line BCP081
+resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for scenario in scenarios: {
+  parent: workspace
+  name: scenario.alias
+  properties: {
+    aliasName: scenario.alias
+    backendModels: map(scenario.backends, (target, i) => union({
+      resourceId: resourceId('Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models', gatewayName, 'default', target.?provider ?? 'backend-${i + 1}', target.?model ?? 'demo-model')
+      priority: scenario.alias == 'demo-alt' ? 1 - i : target.priority
+      weight: target.weight
+    }, contains(target, 'when') ? {
+      when: replace(target.when, '__TEAM_B_ENTRA_IDENTITY__', '${toLower(tenant().tenantId)}:${toLower(teamObjectIds[1])}')
+    } : {}))
+    selectionOrder: ['priority']
+    failures: scenario.failures
+    policies: scenario.policies
+    ...(length(scenario.failures) > 0 ? {maxRetryAttempts: scenario.maxRetryAttempts} : {})
+  }
+  dependsOn: [models, unavailable]
 }]
 
-resource teamRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for binding in [
-  { team: 0, alias: 0 }
-  { team: 0, alias: 1 }
-  { team: 1, alias: 0 }
-  { team: 1, alias: 1 }
-]: {
-  scope: aliases[binding.alias]
-  name: guid(aliases[binding.alias].id, teamObjectIds[binding.team], 'models-user')
+resource teamRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for index in range(0, length(scenarios) * length(teamObjectIds)): {
+  scope: aliases[index % length(scenarios)]
+  name: guid(aliases[index % length(scenarios)].id, teamObjectIds[index / length(scenarios)], 'models-user')
   properties: {
-    principalId: teamObjectIds[binding.team]
+    principalId: teamObjectIds[index / length(scenarios)]
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a6b68e3d-a1f0-4c60-8678-237c050cf4ea')
   }

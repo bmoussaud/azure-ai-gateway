@@ -14,34 +14,34 @@
 <style>
 :root {
   color-scheme: light;
-  --cp-bg: #f7f4ef;
-  --cp-bg-elevated: #fcfbf8;
+  --cp-bg: #ffffff;
+  --cp-bg-elevated: #f5f5f5;
   --cp-surface: #ffffff;
   --cp-surface-soft: #f5f5f5;
-  --cp-border: #dedede;
-  --cp-border-strong: #919191;
+  --cp-border: #e0e0e0;
+  --cp-border-strong: #8a8886;
   --cp-text: #242424;
   --cp-text-muted: #5c5c5c;
   --cp-text-soft: #6f6f6f;
-  --cp-accent: #b11f4b;
-  --cp-accent-hover: #9a1a41;
-  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent: #0f6cbd;
+  --cp-accent-hover: #115ea3;
+  --cp-accent-soft: #ebf3fc;
   --cp-accent-fg: #ffffff;
-  --cp-success: #16a34a;
-  --cp-danger: #dc2626;
-  --cp-warning: #f59e0b;
-  --cp-link: #0078d4;
+  --cp-success: #107c10;
+  --cp-danger: #b10e1e;
+  --cp-warning: #8a5700;
+  --cp-link: #0f6cbd;
   --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
   --cp-overlay: rgba(255, 255, 255, 0.8);
   --cp-panel: rgba(255, 255, 255, 0.86);
   --cp-panel-strong: rgba(255, 255, 255, 0.96);
   --cp-sheen: rgba(255, 255, 255, 0.55);
-  --cp-highlight: rgba(177, 31, 75, 0.12);
+  --cp-highlight: #e0edf9;
 }
 html[data-theme="dark"] {
   color-scheme: dark;
-  --cp-bg: #3d3b3a;
-  --cp-bg-elevated: #343231;
+  --cp-bg: #1f1f1f;
+  --cp-bg-elevated: #292929;
   --cp-surface: #292929;
   --cp-surface-soft: #2e2e2e;
   --cp-border: #474747;
@@ -49,9 +49,9 @@ html[data-theme="dark"] {
   --cp-text: #dedede;
   --cp-text-muted: #919191;
   --cp-text-soft: #b0b0b0;
-  --cp-accent: #fd8ea1;
-  --cp-accent-hover: #fb7b91;
-  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent: #75b6e7;
+  --cp-accent-hover: #9ccbEE;
+  --cp-accent-soft: #15344e;
   --cp-accent-fg: #1a1a1a;
   --cp-success: #4ade80;
   --cp-danger: #f87171;
@@ -62,26 +62,26 @@ html[data-theme="dark"] {
   --cp-panel: rgba(41, 41, 41, 0.72);
   --cp-panel-strong: rgba(41, 41, 41, 0.96);
   --cp-sheen: rgba(255, 255, 255, 0.04);
-  --cp-highlight: rgba(253, 142, 161, 0.12);
+  --cp-highlight: #1b4567;
 }
-*{box-sizing:border-box}body{margin:0;background:var(--cp-bg);color:var(--cp-text);font:16px "Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif}
-main{max-width:1440px;margin:auto;padding:40px 32px}header{display:flex;justify-content:space-between;align-items:start;gap:24px}
-h1{font-size:36px;margin:8px 0 12px;letter-spacing:-1px}h2{font-size:22px;margin:0 0 20px}p{line-height:1.55}.eyebrow{font-size:12px;letter-spacing:2px;font-weight:700;color:var(--cp-accent)}
-.muted,small{color:var(--cp-text-muted)}a{color:var(--cp-link);text-decoration:none}a:hover{text-decoration:underline}nav{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0}
-.card{background:var(--cp-surface);border:1px solid var(--cp-border);border-radius:16px;padding:24px;margin:24px 0}
-.teams{display:grid;grid-template-columns:1fr 1fr;gap:24px}.teams .card{min-width:0;margin:0}.controls{display:flex;flex-wrap:wrap;gap:12px}
-button{font:inherit;border:1px solid var(--cp-border-strong);border-radius:.625rem;padding:12px 16px;background:var(--cp-surface);color:var(--cp-text);cursor:pointer}
-button:hover:enabled{border-color:var(--cp-accent);background:var(--cp-accent-soft)}button:focus-visible,a:focus-visible{outline:3px solid var(--cp-accent);outline-offset:3px}
+*{box-sizing:border-box}html{scroll-padding-top:76px}body{margin:0;background:var(--cp-bg);color:var(--cp-text);font:14px "Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif}
+main{max-width:1720px;margin-left:216px;padding:36px 40px 24px}header{display:flex;justify-content:space-between;align-items:start;gap:24px}
+h1{font-size:28px;font-weight:600;margin:8px 0 6px;letter-spacing:-.3px}h2{font-size:18px;font-weight:600;margin:0 0 16px}p{line-height:1.55}
+.muted,small{color:var(--cp-text-muted)}a{color:var(--cp-link);text-decoration:none}a:hover{text-decoration:underline}.observability{display:flex;gap:20px;flex-wrap:wrap;margin:16px 0 24px;font-size:13px}
+.card{background:var(--cp-surface);border:1px solid var(--cp-border);border-radius:8px;padding:24px;margin:28px 0}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:20px}.teams .card{min-width:0;margin:0}.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+button{font:inherit;border:1px solid var(--cp-border);border-radius:6px;padding:8px 14px;background:var(--cp-surface);color:var(--cp-text);cursor:pointer}
+button:hover:enabled{border-color:var(--cp-accent);background:var(--cp-accent-soft)}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cp-accent);outline-offset:3px}
 button:disabled{opacity:.5;cursor:not-allowed}.primary{background:var(--cp-accent);color:var(--cp-accent-fg);border-color:var(--cp-accent)}.primary:hover:enabled{background:var(--cp-accent-hover);color:var(--cp-accent-fg)}
-.status{padding:10px 16px;background:var(--cp-surface-soft);border-radius:.625rem;white-space:nowrap}.success{color:var(--cp-success)}.danger{color:var(--cp-danger)}.warning{color:var(--cp-warning)}
-.metrics{display:flex;gap:24px;flex-wrap:wrap;padding:16px 0 24px}.metrics strong{display:block;font-size:28px}.metrics span{font-size:12px;color:var(--cp-text-muted)}
-.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--cp-text-muted);font-weight:500;white-space:nowrap}td,th{padding:12px 8px;border-top:1px solid var(--cp-border);vertical-align:top}code{font:11px Consolas,"Courier New",Courier,monospace}
-.backend{height:8px;background:var(--cp-surface-soft);border-radius:4px;overflow:hidden;margin:12px 0 8px;display:flex}.backend span{background:var(--cp-accent)}.backend span+span{background:var(--cp-border-strong)}#error:empty{display:none}#error{border-left:4px solid var(--cp-danger);padding:16px;color:var(--cp-danger);background:var(--cp-surface)}
-select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);color:var(--cp-text);border:1px solid var(--cp-border);border-radius:.625rem}
-@media(max-width:850px){.teams{grid-template-columns:1fr}header{display:block}main{padding:24px 16px}h1{font-size:28px}}
-.live{border-block:2px solid var(--cp-text);padding:20px 0;margin:24px 0 32px}
+.status{padding:7px 12px;background:var(--cp-surface-soft);border:1px solid var(--cp-border);border-radius:6px;white-space:nowrap;font-size:13px}.success{color:var(--cp-success)}.danger{color:var(--cp-danger)}.warning{color:var(--cp-warning)}
+.metrics{display:flex;gap:20px;flex-wrap:wrap;padding:8px 0 16px}.metrics strong{display:block;font-size:24px;font-weight:600}.metrics span{font-size:11px;color:var(--cp-text-muted)}
+.table-scroll{overflow:auto;border:1px solid var(--cp-border);border-radius:6px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--cp-text-muted);background:var(--cp-surface-soft);font-weight:500;white-space:nowrap}td,th{padding:12px 14px;border-bottom:1px solid var(--cp-border);vertical-align:top}tbody tr:last-child td{border-bottom:0}code{font:11px Consolas,"Courier New",Courier,monospace;overflow-wrap:anywhere}
+.backend{height:8px;background:var(--cp-surface-soft);border-radius:4px;overflow:hidden;margin:12px 0 8px;display:flex}.backend span{background:var(--cp-accent)}.backend span+span{background:var(--cp-border-strong)}#error:empty{display:none}#error{border:1px solid var(--cp-danger);border-radius:6px;padding:16px;color:var(--cp-danger);background:var(--cp-surface)}
+select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);color:var(--cp-text);border:1px solid var(--cp-border);border-radius:6px}
+@media(max-width:1100px){.teams{grid-template-columns:1fr}main{padding:28px 24px}}
+.live{border:1px solid var(--cp-border);border-radius:8px;padding:24px;margin:28px 0}
 .live-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}.live-head h2{margin:0}
-.live #action{font-size:1.35rem;font-weight:600;line-height:1.35;margin:.8em 0 .3em}
+.live #action{font-size:18px;font-weight:600;line-height:1.35;margin:.8em 0 .3em}
 .live p{margin:.45em 0}.live details{margin-top:16px}.live summary{cursor:pointer;width:fit-content;padding:6px 0}
 .live summary:focus-visible{outline:3px solid var(--cp-accent);outline-offset:2px}
 .feed{max-height:28rem;overflow:auto;list-style:none;padding:0;margin:0}.feed>li{display:grid;grid-template-columns:5.5rem 1fr;gap:8px;padding:8px 0;border-top:1px solid var(--cp-border)}
@@ -89,12 +89,12 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 .explain b{font-weight:600;color:var(--cp-text-muted)}.live #action-details{margin:0 0 .6em}#action-details:empty{display:none}
 @media(max-width:600px){.explain li{grid-template-columns:1fr}}
 .feed time,.counter{font-variant-numeric:tabular-nums}.feed time{color:var(--cp-text-muted)}.counter{font-weight:600}
-.status{white-space:normal}.success{color:#16733b}.danger{color:#b42031}html[data-theme="dark"] .success{color:var(--cp-success)}html[data-theme="dark"] .danger{color:var(--cp-danger)}
-.gateway-viz{background:var(--cp-surface);border:1px solid var(--cp-border);padding:20px;margin:24px 0}
+.status{white-space:normal}
+.gateway-viz{background:var(--cp-surface);border:1px solid var(--cp-border);border-radius:8px;padding:24px;margin:28px 0}
 .viz-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .viz-head h2{margin:0}.viz-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.viz-controls button{padding:8px 12px}
 .viz-frame{overflow-x:auto;margin:14px 0 8px}.viz-frame svg{display:block;width:100%;min-width:660px;height:auto}
-.viz-app,.viz-gateway,.viz-backend{fill:var(--cp-surface);stroke:var(--cp-border-strong);stroke-width:2}
+.viz-app,.viz-gateway,.viz-backend{fill:var(--cp-surface);stroke:var(--cp-border-strong);stroke-width:1.25}
 .viz-gateway{fill:var(--cp-accent-soft);stroke:var(--cp-accent)}
 .viz-backend.is-down{fill:color-mix(in srgb,var(--cp-danger) 14%,var(--cp-surface));stroke:var(--cp-danger)}
 .viz-backend-state{fill:var(--cp-text-muted);font:600 11px "Segoe UI",sans-serif}
@@ -108,7 +108,7 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 @keyframes viz-route-enter{from{stroke-dashoffset:18;opacity:.08}to{stroke-dashoffset:0;opacity:.72}}
 @keyframes viz-proof-draw{to{stroke-dashoffset:0}}
 .viz-step-list{display:flex;gap:8px;overflow-x:auto;list-style:none;padding:0;margin:12px 0}
-.viz-step-list li{flex:0 0 auto;padding:6px 10px;border:1px solid var(--cp-border);color:var(--cp-text-muted);font-size:13px}
+.viz-step-list li{flex:0 0 auto;padding:6px 10px;border:1px solid var(--cp-border);border-radius:4px;color:var(--cp-text-muted);font-size:12px}
 .viz-step-list li[aria-current="step"]{border-color:var(--cp-accent);color:var(--cp-text);font-weight:600}
 .viz-step-list li[data-state="done"]{color:var(--cp-success);border-color:var(--cp-success)}
 .viz-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--cp-text-muted)}
@@ -122,24 +122,108 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 .viz-packet{fill:var(--cp-accent);stroke:var(--cp-surface);stroke-width:3;transition:cx .75s cubic-bezier(.16,1,.3,1),cy .75s cubic-bezier(.16,1,.3,1),opacity .3s ease}
 .viz-packet.team-b{fill:var(--cp-link)}
 .viz-packet[hidden]{display:none}
+.viz-app.is-source{stroke:var(--cp-accent);stroke-width:2.5;fill:var(--cp-accent-soft)}
+.viz-wire.is-source{stroke:var(--cp-accent);stroke-width:2.5}
+.viz-wire.is-current{stroke-dasharray:10 6;animation:viz-incoming 1s linear infinite}
+@keyframes viz-incoming{to{stroke-dashoffset:-32}}
+.viz-caller{border:1px solid var(--cp-highlight);border-radius:6px;padding:10px 14px;background:var(--cp-accent-soft);line-height:1.5}
+.viz-caller p{margin:4px 0}.viz-call-log{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.viz-call-log li{border:1px solid var(--cp-border);border-radius:4px;padding:8px 12px;font-size:12px;max-width:100%;overflow-wrap:anywhere}
+.viz-call-log li[aria-current="true"]{border-color:var(--cp-accent);background:var(--cp-accent-soft)}
 .viz-replay{font-weight:600;color:var(--cp-accent)}.viz-replay[hidden]{display:none}
 .gateway-viz:fullscreen{background:var(--cp-bg);padding:32px;overflow:auto}
 .gateway-viz:fullscreen .viz-frame svg{min-width:0;max-height:62vh}
 @media(max-width:600px){.gateway-viz{padding:14px}.viz-meter-list{grid-template-columns:1fr}.viz-head{align-items:flex-start}.viz-frame{overflow:visible}.viz-frame svg{min-width:0}}
-@media(prefers-reduced-motion:reduce){.viz-route,.viz-proof,.viz-meter-fill,.viz-packet{transition:none!important;animation:none!important;stroke-dashoffset:0!important}}
+@media(prefers-reduced-motion:reduce){.viz-route,.viz-proof,.viz-meter-fill,.viz-packet,.viz-wire{transition:none!important;animation:none!important;stroke-dashoffset:0!important}}
+.icon{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.icon-defs{position:absolute;width:0;height:0;overflow:hidden}
+.topbar{position:sticky;top:0;z-index:10;height:52px;display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--cp-bg-elevated);border-bottom:1px solid var(--cp-border)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;white-space:nowrap;font-size:13px}.brand>.icon{color:var(--cp-accent)}.brand-separator{color:var(--cp-text-muted);margin:0 4px}
+.gateway-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:240px}.gateway-chevron{color:var(--cp-text-muted);font-size:11px}
+.portal-search{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border:1px solid var(--cp-border);border-radius:20px;padding:6px 12px;width:240px;color:var(--cp-text-muted)}
+.portal-search input{width:100%;min-width:0;border:0;background:transparent;color:var(--cp-text);font:inherit;outline-offset:6px}.portal-search input::placeholder{color:var(--cp-text-muted)}
+.top-actions{margin-left:auto;display:flex;align-items:center;gap:12px}.icon-button{display:inline-flex;align-items:center;justify-content:center;padding:6px;border-color:transparent}.demo-mark{font-size:11px;color:var(--cp-text-muted)}
+.avatar{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--cp-highlight);color:var(--cp-accent);font-size:11px;font-weight:600}
+.sidebar{position:fixed;top:52px;bottom:0;left:0;width:216px;padding:12px 8px;background:var(--cp-bg-elevated);border-right:1px solid var(--cp-border);overflow-y:auto;z-index:9}
+.sidebar nav{display:flex;flex-direction:column;gap:4px}.sidebar a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:6px;color:var(--cp-text);font-size:13px}
+.sidebar a:hover{background:var(--cp-surface);text-decoration:none}.sidebar a[aria-current="page"]{background:var(--cp-surface);font-weight:600}.sidebar a[aria-current="page"] .icon{color:var(--cp-accent)}
+.nav-group{font-size:11px;color:var(--cp-text-muted);margin:24px 12px 6px}.sidebar-note{font-size:11px;line-height:1.6;color:var(--cp-text-muted);margin:28px 12px}
+.menu-button{display:none}.skip-link{position:fixed;top:-80px;left:16px;z-index:20;background:var(--cp-surface);padding:12px}.skip-link:focus{top:8px}
+.overview-subtitle{margin:0 0 28px;color:var(--cp-text-muted);font-size:13px}
+.overview-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:32px}
+.connect-card{padding:20px 24px;border-radius:8px;background:linear-gradient(110deg,var(--cp-highlight),var(--cp-surface-soft));min-width:0}
+.connect-card>.icon,.action-icon{background:var(--cp-surface);border-radius:6px;padding:9px;width:38px;height:38px}
+.connect-card h2{margin:12px 0 4px}.connect-card p{font-size:13px;margin:0 0 20px;color:var(--cp-text-muted)}
+.endpoint-label{display:block;font-size:12px;margin-bottom:6px}.endpoint-field{display:flex;gap:4px;align-items:center;border-radius:4px;background:var(--cp-surface);padding:4px 8px}
+.endpoint-field input{font:12px "Segoe UI",sans-serif;color:var(--cp-link);border:0;background:transparent;min-width:0;width:100%;padding:6px 0;text-overflow:ellipsis}.copy-status{min-height:18px;margin-top:4px;font-size:11px;color:var(--cp-text-muted)}
+.action-cards{display:grid;gap:12px}.action-card{display:flex;align-items:center;gap:16px;background:var(--cp-surface-soft);border-radius:8px;padding:20px}
+.action-card h2{font-size:16px;margin:0 0 4px}.action-card p{font-size:13px;color:var(--cp-text-muted);margin:0}.action-card>a{border:1px solid var(--cp-border);border-radius:20px;padding:6px 12px;background:var(--cp-surface);margin-left:auto;white-space:nowrap;color:var(--cp-text);font-size:12px}
+.section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:28px 0 12px}.section-heading h2{font-size:16px;margin:0}.section-heading a{font-size:12px}
+.model-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.model-tile{text-align:left;display:flex;align-items:center;gap:12px;padding:14px 12px;background:var(--cp-surface-soft);border:1px solid transparent;border-radius:8px;min-width:0}
+.model-tile .icon{background:var(--cp-surface);padding:7px;width:34px;height:34px;border-radius:6px}.model-tile span{min-width:0}.model-tile strong{display:block;font-size:12px;font-weight:600;overflow-wrap:anywhere}.model-tile small{display:block;font-size:11px;margin-top:3px}
+.model-tile[aria-pressed="true"]{border-color:var(--cp-accent);background:var(--cp-accent-soft)}.model-tile[hidden]{display:none}#model-empty{font-size:13px}
+.recent-section{margin:32px 0}.recent-section h2{font-size:16px}.recent-section td{vertical-align:middle}.run-link{padding:0;border:0;color:var(--cp-link);background:transparent;text-align:left}.table-pagination{font-size:11px;color:var(--cp-text-muted);margin:8px 0}
+.results-heading{margin:32px 0 12px}footer{margin-top:28px;font-size:12px}footer p{max-width:110ch}
+@media(min-width:1600px){.model-tiles{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:1250px){.portal-search{position:static;transform:none;margin-left:auto;width:210px}.top-actions{margin-left:0}.demo-mark{display:none}.action-card{flex-wrap:wrap}.action-card>a{margin-left:54px}}
+@media(max-width:850px){main{margin-left:0;padding:24px 16px}.sidebar{display:none}.nav-open .sidebar{display:block;box-shadow:var(--cp-shadow)}.menu-button{display:inline-flex}.topbar{gap:8px}.brand{flex:1;gap:6px}.brand-label{display:none}.gateway-name{max-width:none}.brand-separator{display:none}.portal-search{display:none}.top-actions{gap:6px}.overview-cards{grid-template-columns:1fr}.model-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-subtitle{margin-bottom:20px}.page-header{display:block}.page-header .status{display:inline-block;margin:10px 0 20px}.card,.live,.gateway-viz{padding:16px}.section-heading a{white-space:nowrap}}
+@media(max-width:420px){.topbar{padding:0 8px}.gateway-name{font-size:11px}.avatar{display:none}.model-tiles{grid-template-columns:1fr}.action-card{padding:16px}.connect-card{padding:20px}.feed>li{grid-template-columns:4.5rem 1fr}.controls #scenario{width:100%}}
 </style>
 </head>
 <body>
-<main>
-<header><div><h1>Deux applications. Une passerelle.</h1><p class="muted">Suivez les appels des équipes A et B à travers Azure AI Gateway.</p></div><div id="status" class="status" role="status">Connexion…</div></header>
-<nav aria-label="Observabilite"><a id="gateway" target="_blank" rel="noopener">Dashboard AI Gateway &#8599;</a><a id="insights" target="_blank" rel="noopener">Application Insights &#8599;</a><a id="workbook" target="_blank" rel="noopener">Azure Workbook &#8599;</a></nav>
+<svg class="icon-defs" aria-hidden="true"><defs>
+<symbol id="icon-gateway" viewBox="0 0 24 24"><path d="M12 3 21 8v8l-9 5-9-5V8z M3 8l9 5 9-5 M12 13v8"/></symbol>
+<symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7 M5 9v11h5v-6h4v6h5V9"/></symbol>
+<symbol id="icon-model" viewBox="0 0 24 24"><path d="m12 3 8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10 M8 5l8 4"/></symbol>
+<symbol id="icon-route" viewBox="0 0 24 24"><path d="M5 5h6v14h8 M11 12h8"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="12" r="2"/><circle cx="20" cy="19" r="2"/></symbol>
+<symbol id="icon-journal" viewBox="0 0 24 24"><path d="M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5"/></symbol>
+<symbol id="icon-proof" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z m-4 9 3 3 5-6"/></symbol>
+<symbol id="icon-replay" viewBox="0 0 24 24"><path d="M4 9a9 9 0 1 1 0 6 M4 3v6h6 m1 0 5 3-5 3z"/></symbol>
+<symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
+<symbol id="icon-copy" viewBox="0 0 24 24"><path d="M9 3h11v14H9z M5 7H3v14h11v-2"/></symbol>
+<symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 6h16 M4 12h16 M4 18h16"/></symbol>
+<symbol id="icon-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2"/></symbol>
+</defs></svg>
+<a class="skip-link" href="#overview">Aller au contenu</a>
+<div class="topbar">
+<button id="nav-toggle" type="button" class="icon-button menu-button" aria-label="Afficher la navigation" aria-expanded="false" aria-controls="portal-nav"><svg class="icon" aria-hidden="true"><use href="#icon-menu"/></svg></button>
+<div class="brand"><svg class="icon" aria-hidden="true"><use href="#icon-gateway"/></svg><span class="brand-label">Azure AI Gateway</span><span class="brand-separator">/</span><span id="gateway-name" class="gateway-name">aigw-ab-b8ff3e-261124</span><span class="gateway-chevron" aria-hidden="true">⌄</span></div>
+<label class="portal-search"><svg class="icon" aria-hidden="true"><use href="#icon-search"/></svg><input id="model-search" type="search" placeholder="Rechercher un modèle" aria-label="Rechercher parmi les modèles de scénario"></label>
+<div class="top-actions"><span class="demo-mark">Console de démo</span><button id="theme-toggle" type="button" class="icon-button" aria-label="Changer le thème"><svg class="icon" aria-hidden="true"><use href="#icon-theme"/></svg></button><span class="avatar" aria-label="Atelier applications A et B">A/B</span></div>
+</div>
+<aside id="portal-nav" class="sidebar">
+<nav aria-label="Navigation de la console">
+<a href="#overview" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg>Accueil</a>
+<a href="#models"><svg class="icon" aria-hidden="true"><use href="#icon-model"/></svg>Modèles</a>
+<p class="nav-group">Démo</p>
+<a href="#scenario-controls"><svg class="icon" aria-hidden="true"><use href="#icon-model"/></svg>Scénarios</a>
+<a href="#gateway-viz"><svg class="icon" aria-hidden="true"><use href="#icon-route"/></svg>Carte en direct</a>
+<a href="#journal"><svg class="icon" aria-hidden="true"><use href="#icon-journal"/></svg>Journal</a>
+<a href="#gateway-viz" data-replay-nav><svg class="icon" aria-hidden="true"><use href="#icon-replay"/></svg>Replay</a>
+<p class="nav-group">Contrôle</p>
+<a href="#results"><svg class="icon" aria-hidden="true"><use href="#icon-proof"/></svg>Preuves et résultats</a>
+<a href="#recent-runs"><svg class="icon" aria-hidden="true"><use href="#icon-journal"/></svg>Exécutions récentes</a>
+</nav><p class="sidebar-note">Atelier A/B<br>Console de démonstration.<br>Ce n’est pas le portail officiel.</p>
+</aside>
+<main id="overview">
+<header class="page-header"><div><h1>Deux applications. Une passerelle.</h1><p class="overview-subtitle">Votre atelier sur <a id="overview-gateway-name" href="#models">aigw-ab-b8ff3e-261124</a> · console de démo, pas le portail officiel.</p></div><div id="status" class="status" role="status">Connexion…</div></header>
+<section class="overview-cards" aria-label="Découvrir la console">
+<div class="connect-card"><svg class="icon" aria-hidden="true"><use href="#icon-gateway"/></svg><h2>Connecter vos applications</h2><p>Deux identités dédiées, des modèles gouvernés et un endpoint commun.</p><label for="gateway-endpoint" class="endpoint-label">Endpoint runtime de la passerelle</label><div class="endpoint-field"><input id="gateway-endpoint" readonly value="Connexion…" aria-label="Endpoint runtime de la passerelle"><button id="copy-endpoint" class="icon-button" type="button" disabled aria-label="Copier l’endpoint"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg></button></div><div id="copy-status" class="copy-status" role="status"></div></div>
+<div class="action-cards">
+<div class="action-card"><svg class="icon action-icon" aria-hidden="true"><use href="#icon-model"/></svg><div><h2>Jouer les scénarios</h2><p>Un alias fixe par scénario.<br>Aucune configuration réécrite.</p></div><a href="#scenario-controls">Choisir un modèle</a></div>
+<div class="action-card"><svg class="icon action-icon" aria-hidden="true"><use href="#icon-proof"/></svg><div><h2>Observer les preuves</h2><p>Application source dès l’envoi.<br>Backend confirmé par trace native.</p></div><a href="#results">Voir les résultats</a></div>
+</div></section>
+<nav class="observability" aria-label="Observabilite"><a id="gateway" target="_blank" rel="noopener">Dashboard AI Gateway &#8599;</a><a id="insights" target="_blank" rel="noopener">Application Insights &#8599;</a><a id="workbook" target="_blank" rel="noopener">Azure Workbook &#8599;</a></nav>
+<section id="models" aria-labelledby="models-title"><div class="section-heading"><h2 id="models-title">Modèles de scénario</h2><a href="#scenario-controls">Contrôles d’exécution</a></div><div id="model-tiles" class="model-tiles"></div><p id="model-empty" hidden>Aucun modèle ne correspond à votre recherche.</p></section>
+<section id="recent-runs" class="recent-section" aria-labelledby="recent-title"><h2 id="recent-title">Exécutions récentes</h2><div class="table-scroll"><table><thead><tr><th>Modèle appelé</th><th>État</th><th>Dernière activité</th><th>Appels</th><th>Traces natives</th></tr></thead><tbody id="recent-rows"></tbody></table></div><p id="recent-pagination" class="table-pagination">Aucune exécution</p></section>
 <div id="error" role="alert"></div>
-<section class="card" aria-labelledby="scenarios"><h2 id="scenarios">Lancer un scénario</h2>
+<section id="scenario-controls" class="card" aria-labelledby="scenarios"><h2 id="scenarios">Lancer un scénario</h2>
 <label for="scenario">Scénario à lancer</label>
 <div class="controls">
-<select id="scenario" disabled><option value="baseline">Tester A et B</option><option value="weighted-routing">Répartir le trafic 80/20</option><option value="failover">Simuler une panne</option><option value="token-rate">Tester la limite par minute</option><option value="token-quota">Tester le quota horaire</option><option value="reset">Rétablir le profil initial</option><option disabled>Budget monétaire indisponible · tarifs incomplets</option></select>
+<select id="scenario" disabled><option value="baseline">Tester A et B · demo-chat</option><option value="weighted-routing">Routage 80/20 · scenario-weighted-80-20</option><option value="identity-routing">Identité · scenario-identity</option><option value="failover">Bascule · scenario-failover</option><option value="token-rate">Limite minute · scenario-token-rate</option><option value="token-quota">Quota horaire · scenario-token-quota</option><option value="reset">Vérifier les modèles fixes</option><option disabled>Budget monétaire indisponible · tarifs incomplets</option></select>
 <button disabled id="start" class="primary">Start</button><button disabled id="stop">Stop</button>
-</div><p class="muted"><small>Start lance le scénario choisi. Stop laisse finir l’appel en cours et rétablit le profil initial. Routage 80/20 : 10 appels, avec au maximum 2 s de pause entre deux appels, hors temps de réponse Azure. La répartition observée peut varier.</small></p>
+</div><p class="muted"><small>Chaque scénario appelle son propre modèle, configuré une fois au déploiement. Aucun routage ni quota n’est réécrit. Stop laisse finir l’appel en cours ; les compteurs Azure persistent jusqu’à leur renouvellement naturel. Au plus 10 appels et 2 s de pause intentionnelle, hors latence Azure.</small></p>
 <label for="history">Exécution affichée </label><select id="history"><option>Aucune exécution</option></select>
 </section>
 <section id="gateway-viz" class="gateway-viz" aria-labelledby="viz-title">
@@ -148,29 +232,32 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <button id="viz-fullscreen" type="button">Plein écran</button>
 </div></div>
 <ol id="viz-steps" class="viz-step-list" aria-label="Étapes du scénario"></ol>
+<div class="viz-caller"><strong id="viz-caller-status" role="status" aria-live="polite">Aucun appel affiché</strong><p id="viz-caller-proof">Source publiée par la console ; backend en attente de trace native.</p></div>
 <div class="viz-frame"><svg id="topology" viewBox="0 0 1000 330" role="img" aria-labelledby="viz-svg-title viz-svg-desc">
 <title id="viz-svg-title">Flux des équipes A et B dans Azure AI Gateway</title>
 <desc id="viz-svg-desc">Les équipes appellent la passerelle via demo-chat. Les routes configurées sont en pointillés; seuls les traits pleins verts sont confirmés par des traces Azure.</desc>
 <defs><marker id="viz-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path></marker></defs>
-<g id="viz-input-a"><path id="viz-wire-A" class="viz-wire" d="M190 105 C245 105 285 145 350 150" marker-end="url(#viz-arrow)"></path><rect class="viz-app" x="20" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="100">Application A</text><text class="viz-label" x="38" y="124">Identité dédiée</text></g>
-<g id="viz-input-b"><path id="viz-wire-B" class="viz-wire" d="M190 235 C245 235 285 195 350 190" marker-end="url(#viz-arrow)"></path><rect class="viz-app" x="20" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="230">Application B</text><text class="viz-label" x="38" y="254">Identité dédiée</text></g>
+<g id="viz-input-a"><path id="viz-wire-A" class="viz-wire" d="M190 105 C245 105 285 145 350 150" marker-end="url(#viz-arrow)"></path><rect id="viz-app-A" class="viz-app" x="20" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="100">Application A</text><text id="viz-app-A-status" class="viz-label" x="38" y="124">Identité dédiée</text></g>
+<g id="viz-input-b"><path id="viz-wire-B" class="viz-wire" d="M190 235 C245 235 285 195 350 190" marker-end="url(#viz-arrow)"></path><rect id="viz-app-B" class="viz-app" x="20" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="230">Application B</text><text id="viz-app-B-status" class="viz-label" x="38" y="254">Identité dédiée</text></g>
 <g id="viz-route-layer"></g><g id="viz-proof-layer"></g><g id="viz-call-layer"></g>
 <circle id="viz-packet-A" class="viz-packet" r="9" cx="190" cy="105" hidden></circle>
 <circle id="viz-packet-B" class="viz-packet team-b" r="9" cx="190" cy="235" hidden></circle>
-<g id="viz-gateway-node"><rect class="viz-gateway" x="350" y="90" width="300" height="160" rx="4"></rect><text class="viz-title" x="378" y="126">Azure AI Gateway</text><text class="viz-label" x="378" y="154">Alias présenté : demo-chat</text><text id="viz-gateway-state" class="viz-small" x="378" y="181">Configuration de référence</text><text id="viz-gateway-policy" class="viz-small" x="378" y="208">Routage et gouvernance</text></g>
-<g id="viz-backend-1-node"><rect id="viz-backend-1" class="viz-backend" x="810" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="98">Backend 1</text><text class="viz-label" x="828" y="118">Modèle Foundry</text><text id="viz-backend-1-state" class="viz-backend-state" x="828" y="135">État non vérifié</text></g>
+<g id="viz-gateway-node"><rect class="viz-gateway" x="350" y="90" width="300" height="160" rx="4"></rect><text class="viz-title" x="378" y="126">Azure AI Gateway</text><text id="viz-alias" class="viz-small" x="366" y="154">Modèle : en attente</text><text id="viz-gateway-state" class="viz-small" x="378" y="181">Aucun scénario affiché</text><text id="viz-gateway-policy" class="viz-small" x="378" y="208"></text></g>
+<g id="viz-backend-1-node"><g id="viz-identity-lock" visibility="hidden" aria-label="Condition CEL : identité, B exclue"><rect x="802" y="27" width="184" height="30" rx="4" fill="var(--cp-accent-soft)" stroke="var(--cp-accent)"></rect><path d="M812 40 v-4 a4 4 0 0 1 8 0 v4 m-9 0 h10 v10 h-10 z" fill="none" stroke="var(--cp-accent)" stroke-width="2"></path><text class="viz-small" x="830" y="46">CEL : identité · B exclue</text></g><rect id="viz-backend-1" class="viz-backend" x="810" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="98">Backend 1</text><text class="viz-label" x="828" y="118">Modèle Foundry</text><text id="viz-backend-1-state" class="viz-backend-state" x="828" y="135">État non vérifié</text></g>
 <g id="viz-backend-2-node"><rect id="viz-backend-2" class="viz-backend" x="810" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="228">Backend 2</text><text class="viz-label" x="828" y="248">Modèle Foundry</text><text id="viz-backend-2-state" class="viz-backend-state" x="828" y="265">État non vérifié</text></g>
 </svg></div>
 <div class="viz-legend" aria-label="Légende"><span><i class="viz-key"></i>Route configurée</span><span><i class="viz-key proof"></i>Backend confirmé par trace Azure</span><span id="viz-replay-label" class="viz-replay" hidden>REJEU</span></div>
+<ol id="viz-caller-log" class="viz-call-log" aria-label="Tous les appels publiés, dans leur ordre réel"></ol>
 <p id="viz-caption" class="viz-note muted">Le backend réel apparaît seulement après l’ingestion de la trace native. Les points montrent les appels observés; la répartition 80/20 n’est pas garantie sur dix appels.</p>
 <p id="viz-quota-note" class="viz-note muted">Les quotas Azure ne sont pas directement observables.</p>
 <div id="viz-meters" class="viz-meter-list"></div>
 </section>
-<section class="live" aria-labelledby="live-title">
+<section id="journal" class="live" aria-labelledby="live-title">
 <div class="live-head"><h2 id="live-title">Fil d’exécution</h2><span id="counter" class="counter"></span></div>
 <p id="action" role="status">Connexion à la console…</p><ul id="action-details" class="explain"></ul><p id="run-details" class="muted"></p>
 <details open><summary>Journal horodaté · du plus récent au plus ancien</summary><ol id="feed" class="feed"></ol></details>
 </section>
+<h2 id="results" class="results-heading">Preuves et résultats par application</h2>
 <div class="teams">
 <section class="card" aria-labelledby="team-a"><h2 id="team-a">Application de l’équipe A</h2><div id="metrics-A" class="metrics"></div><div id="route-A"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-A"></tbody></table></div></section>
 <section class="card" aria-labelledby="team-b"><h2 id="team-b">Application de l’équipe B</h2><div id="metrics-B" class="metrics"></div><div id="route-B"></div><div class="table-scroll"><table><thead><tr><th>Phase / alias</th><th>HTTP</th><th>Tokens / ms</th><th>Backend natif / trace</th></tr></thead><tbody id="rows-B"></tbody></table></div></section>
@@ -179,20 +266,31 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 </main>
 <script>
 let state=null, selected=null, launching=false, awaitingJob=null, stopping=null, feedJob=null, feedCount=0, launchError="", stopError="";
-const labels={configuring:"Préparation",running:"Exécution",complete:"Profil initial rétabli",verified:"Vérifié","awaiting-native":"Attente des traces",stopped:"Arrêté · résultat partiel",failed:"Échec · non certifié"};
-const names={baseline:"Test A et B","weighted-routing":"Routage 80/20",failover:"Panne et récupération","token-rate":"Limite par minute","token-quota":"Quota horaire",reset:"Retour au profil initial"};
+const labels={configuring:"Préparation",running:"Exécution",complete:"Modèles fixes vérifiés",verified:"Vérifié","awaiting-native":"Attente des traces",stopped:"Arrêté · résultat partiel",failed:"Échec · non certifié"};
+const names={baseline:"Test A et B","weighted-routing":"Routage 80/20","identity-routing":"Identité de l’appelant · B → Backend 2",failover:"Panne permanente simulée et bascule","token-rate":"Limite par minute","token-quota":"Quota horaire",reset:"Vérifier les modèles fixes"};
+const scenarioModels=[
+  {scenario:"baseline",alias:"demo-chat",summary:"Référence · applications A et B"},
+  {scenario:"weighted-routing",alias:"scenario-weighted-80-20",summary:"Routage pondéré · 80/20"},
+  {scenario:"identity-routing",alias:"scenario-identity",summary:"Identité validée · B → Backend 2"},
+  {scenario:"failover",alias:"scenario-failover",summary:"Panne simulée permanente · bascule"},
+  {scenario:"token-rate",alias:"scenario-token-rate",summary:"256 tokens / minute · par identité"},
+  {scenario:"token-quota",alias:"scenario-token-quota",summary:"256 tokens / heure · par identité"}
+];
 const phases={healthy:"Vérifier l’accès au modèle",weighted:"Échantillonner le routage",primary:"Vérifier la route principale",secondary:"Vérifier la route secondaire",failover:"Tester la bascule",excluded:"Tester l’exclusion de la route défaillante","all-down":"Tester l’indisponibilité des deux routes",recovered:"Vérifier le retour de la route principale","recovered-secondary":"Vérifier le retour de la route secondaire","initial-A":"Vérifier l’accès initial de A","initial-B":"Vérifier l’accès initial de B","consume-A":"Consommer l’enveloppe de A","still-rejected":"Vérifier si A reste limitée","B-continues":"Vérifier si B peut continuer","alternate-rejected":"Tester la limite de A sur le second alias","B-alternate":"Tester l’accès de B sur le second alias"};
 const clock=new Intl.DateTimeFormat("fr-FR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const runDate=new Intl.DateTimeFormat("fr-FR",{dateStyle:"short",timeStyle:"medium"});
 function describe(e,j){
   const call=`Appel ${e.number} · équipe ${e.team} → ${e.alias}`;
   switch(e.kind){
     case "accepted":return "La console a accepté le scénario.";
     case "stop-requested":return "Arrêt demandé. L’opération en cours peut se terminer.";
-    case "stopped":return "Scénario arrêté. Profil initial rétabli, observations conservées.";
+    case "stopped":return "Scénario arrêté. Configuration inchangée, observations conservées ; les compteurs Azure persistent.";
     case "identities":return "La console prépare les identités des équipes A et B.";
     case "checking-limits":return "Lecture des capacités Azure pour espacer les appels.";
-    case "applying-profile":return `Configuration de la passerelle : ${names[j.scenario]}. Écriture dans Azure de la gouvernance de l’espace de travail et de l’alias demo-chat.`;
-    case "profile-applied":return `Azure a relu la configuration « ${names[j.scenario]} » : elle est en place.`;
+    case "model-selected":return `Appel du modèle ${e.config?.routes?.[0]?.alias||j.alias}, configuré ainsi : ${names[j.scenario]}. Lecture seule ; aucune écriture dans Azure.`;
+    case "model-verified":return `Le modèle fixe ${e.alias} correspond à sa définition déployée. Le backend réellement servi reste à confirmer par les traces.`;
+    case "checking-models":return "Vérification en lecture seule des modèles fixes, sans effacer les compteurs.";
+    case "configuration-unchanged":return "Configuration inchangée : demo-chat a été relu avec le même ETag. Aucun modèle n’a été reconfiguré.";
     case "quota-window":return `Attente de la prochaine fenêtre de quota (${e.seconds} s au départ).`;
     case "pacing":return `Pause avant l’appel de l’équipe ${e.team} pour respecter la cadence Azure (${e.seconds} s au départ).`;
     case "sending":return `${call} : envoi vers la passerelle.${phases[e.phase]?" "+phases[e.phase]+".":""}`;
@@ -210,7 +308,7 @@ function describe(e,j){
     case "awaiting-traces":return "Appels terminés. Attente des traces d’Application Insights.";
     case "traces":return `Application Insights : ${e.count} trace(s) reçue(s) sur ${e.total}.`;
     case "verifying":return "Comparaison des traces Azure avec les résultats attendus.";
-    case "verified":return j.scenario==="weighted-routing"?"Les traces Azure confirment les backends utilisés. Sur 10 appels, la répartition n’est pas forcément 8/2.":"Scénario vérifié : les traces Azure confirment les résultats.";
+    case "verified":return j.scenario==="identity-routing"?"Preuve native : A → Backend 1 (5/5), B → Backend 2 (5/5). Aucun appel B sur Backend 1, zéro retry client. Configuration inchangée.":j.scenario==="weighted-routing"?"Les traces Azure confirment les backends utilisés. Sur 10 appels, la répartition n’est pas forcément 8/2.":"Scénario vérifié : les traces Azure confirment les résultats.";
     case "restored":return "Le profil initial est rétabli.";
     case "repair":return "Tentative de remise en état après interruption.";
     case "failed":return "Le scénario a échoué. Les résultats ne sont pas certifiés.";
@@ -220,10 +318,13 @@ function describe(e,j){
   }
 }
 function text(id,value){const n=el(id);if(n.textContent!==value)n.textContent=value}
-const purposes={baseline:"Vérifier que A et B atteignent le modèle par l’alias demo-chat, sans routage avancé ni limite.","weighted-routing":"Montrer qu’un même alias répartit ses appels entre deux déploiements Azure. Sur 10 appels, un écart à 8/2 est normal.",failover:"Casser volontairement la route du backend 1 puis du 2 : observer la bascule, l’exclusion temporaire (qui vaut aussi pour l’équipe B), l’indisponibilité totale (erreur HTTP attendue), puis la récupération des deux équipes.","token-rate":"L’équipe A consomme vite son enveloppe de la minute et doit recevoir HTTP 429 ; l’équipe B continue avec son propre compteur.","token-quota":"L’équipe A épuise son quota horaire et doit recevoir HTTP 403 ; l’équipe B continue avec son propre compteur."};
+const purposes={baseline:"Vérifier que A et B atteignent le modèle par l’alias demo-chat, sans routage avancé ni limite.","weighted-routing":"Montrer qu’un alias fixe répartit ses appels entre deux déploiements Azure. Sur 10 appels, un écart à 8/2 est normal.",failover:"Appeler un alias dont le premier modèle, demo-unavailable, est volontairement et toujours en erreur 404. Azure bascule vers Backend 2. Les modèles réels des autres alias sont inchangés. Cette panne permanente de laboratoire ne démontre ni récupération ni panne régionale.","token-rate":"A consomme son enveloppe minute et reçoit HTTP 429 ; B continue avec un compteur distinct, propre à cet alias. Aucun compteur n’est remis à zéro au démarrage.","token-quota":"A épuise son quota horaire et reçoit HTTP 403 ; B continue avec un compteur distinct, propre à cet alias. Une nouvelle exécution peut commencer avec A déjà épuisée : attendre le renouvellement naturel."};
 const periods={minute:"minute",hour:"heure",day:"jour"};
+purposes["identity-routing"]="Segmenter deux applications par leur identité authentifiée : A reste sur Backend 1 ; B est épinglée à Backend 2. Cinq appels par identité, alternés, sans header de routage ni retry client.";
 function routeText(r){
   const t=r.targets.slice().sort((a,b)=>a.priority-b.priority||a.backend-b.backend);
+  if(t.some(x=>x.model==="demo-unavailable"))return "demo-unavailable est une mauvaise route permanente, priorité 0. Azure reçoit son erreur 404 puis utilise Backend 2, priorité 1. Aucun changement de route pendant la démo.";
+  if(t.some(x=>x.when))return "l’identité Entra B est exclue du backend 1 ; B ne peut sélectionner que le backend 2. A conserve le backend 1 prioritaire. Ce choix n’est pas déduit comme backend servi avant les traces.";
   if(t.every(x=>x.priority===t[0].priority)){const total=t.reduce((n,x)=>n+x.weight,0)||1;return `tirage pondéré à chaque appel : ${t.map(x=>`backend ${x.backend} ${Math.round(100*x.weight/total)} %`).join(", ")}.`}
   return `backend ${t[0].backend} en premier choix (priorité ${t[0].priority}) ; ${t.slice(1).map(x=>`backend ${x.backend} en second rang (priorité ${x.priority})`).join(", ")}.`;
 }
@@ -236,7 +337,7 @@ function failoverText(c){
 function policyShort(p){const per=periods[p.period]||p.period;return p.type==="tokenLimit"?`${p.count} tokens par ${per}`:p.type==="costLimit"?`${p.amount} USD par ${per}`:p.type}
 function policyText(p){
   const who=p.counterKey?.length===1&&p.counterKey[0]==="identity"?"pour chaque identité appelante (A et B ont chacune leur compteur)":`compteur : ${(p.counterKey||[]).join(", ")}`;
-  const where=p.scope==="workspace"?", sur tout l’espace de travail de la passerelle":"";
+  const where=p.scope==="workspace"?", sur tout l’espace de travail de la passerelle":", uniquement sur cet alias ; les autres scénarios ont des compteurs indépendants";
   const extra=p.type==="tokenLimit"?" Un appel déjà accepté peut dépasser le seuil ; les suivants sont refusés.":p.overrides?` ${p.overrides} exception(s) ciblée(s).`:"";
   return `${policyShort(p)} ${who}${where}.${extra}`;
 }
@@ -247,23 +348,14 @@ function shape(c){
   return {routes:list(c.routes).map(r=>({alias:String(r.alias||"alias"),targets:list(r.targets)})).filter(r=>r.targets.length&&r.alias!=="demo-alt"),maxRetryAttempts:Number(c.maxRetryAttempts)||0,failures:list(c.failures),policies:list(c.policies)};
 }
 function configLines(c){
-  return [...c.routes.map(r=>[r.alias,routeText(r)]),["Bascule",failoverText(c)],["Gouvernance",c.policies.length?c.policies.map(policyText).join(" "):"aucune limite de tokens ni de coût."]];
+  const condition=c.routes.flatMap(r=>r.targets).find(t=>t.when)?.when;
+  return [...c.routes.map(r=>[r.alias,routeText(r)]),...(condition?[["Condition CEL",condition],["Traduction","Backend 1 est éligible sauf si l’identité validée correspond à B. Backend 2 n’a aucune condition. Azure évalue CEL avant les priorités, sur le jeton Entra validé : aucun header libre n’est utilisé."],["Isolement","B est épinglée à Backend 2. S’il tombe, B échoue explicitement, sans repli vers Backend 1. Ce n’est pas une garantie de disponibilité."],["Preuve","Le statut HTTP arrive d’abord ; seuls l’oid et le backend dans les traces Azure, joints par trace ID, confirment le résultat réel."]]:[]),["Bascule",failoverText(c)],["Gouvernance",c.policies.length?c.policies.map(policyText).join(" "):"aucune limite de tokens ni de coût."]];
 }
-function sameRoutes(a,b){const key=c=>c.routes.map(r=>r.alias+":"+r.targets.map(t=>`${t.backend}/${t.priority}/${t.weight}`).join(",")).join("|");return key(a)===key(b)}
 function explain(e,j){
   const config=shape(e.config);
-  if(e.kind==="applying-profile")return [...(purposes[j.scenario]?[["But",purposes[j.scenario]]]:[]),...(config?[["Principe","les applications appellent un alias stable ; la passerelle choisit le backend réel. Backends 1 et 2 : même modèle, deux ressources Foundry distinctes."],...configLines(config)]:[])];
-  if(e.kind!=="restoring")return [];
-  if(!config)return [["Action","réparation des routes éventuellement modifiées par une panne simulée, puis retour au profil initial : chaque alias revient à son premier choix, sans bascule ni limite."],["Compteurs","les tokens déjà consommés et les exclusions en cours ne sont pas effacés ; ils expirent d’eux-mêmes."]];
-  const prev=shape(j.activity.find(x=>x.kind==="applying-profile"&&x.config)?.config), changes=[];
-  if(e.repairs)changes.push(`contrôle de l’adresse réelle des ${e.repairs} backend(s) touché(s) par la panne simulée, réécrite si nécessaire`);
-  if(prev?.policies.length)changes.push(`retrait de ${prev.policies.map(policyShort).join(", ")}`);
-  if(prev&&(prev.maxRetryAttempts||prev.failures.length))changes.push("retrait des règles de bascule et d’exclusion");
-  if(prev&&!sameRoutes(prev,config))changes.push("retour au routage initial, un premier choix par alias");
-  const lines=[["Pourquoi","laisser une passerelle neutre pour le scénario suivant, même après Stop ou erreur."],["Changements",changes.length?changes.join(" ; ")+".":prev?"aucun : ce scénario utilise déjà le profil initial ; Azure le vérifie sans le réécrire.":"rétablissement complet du profil initial."],...configLines(config)];
-  if(prev?.policies.length)lines.push(["Compteurs","les tokens déjà consommés ne sont pas remis à zéro ; ils se renouvellent à la fin de leur période."]);
-  if(prev?.failures.length)lines.push(["Exclusions","une exclusion déjà active n’est pas annulée ; elle expire d’elle-même."]);
-  return lines;
+  if(e.kind==="model-selected")return [...(purposes[j.scenario]?[["But",purposes[j.scenario]]]:[]),...(config?[["Principe","seul le champ model envoyé par l’application change entre les scénarios. Les alias et leurs stratégies restent fixes dans Azure."],...configLines(config)]:[])];
+  if(e.kind==="configuration-unchanged")return [["Lecture seule","aucune stratégie ni route n’a été modifiée. Les jetons consommés persistent ; Stop et une nouvelle exécution ne remettent pas les compteurs Azure à zéro."]];
+  return [];
 }
 function details(list,lines){
   list.replaceChildren();
@@ -277,13 +369,13 @@ function showActivity(job){
   text("live-title",job&&!awaiting?`Fil d’exécution · ${names[job.scenario]}`:"Fil d’exécution");
   text("action",awaiting?"Demande de lancement en cours…":launchError?"Lancement non confirmé. Vérifiez l’historique avant de réessayer.":job?.status==="failed"&&job.finishedAt?"Échec du scénario · résultats non certifiés.":last?describe(last,job):job?(labels[job.status]||"Préparation"):"Choisissez un scénario pour suivre ses actions ici.");
   const count=job?.requests.length||0;
-  const target=({baseline:2,"weighted-routing":10,failover:6})[job?.scenario];
-  text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 12 au maximum`);
-  text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · ${job.native.length}/${count} traces Azure · profil initial ${job.restored?"rétabli":"non encore confirmé"}.`);
+  const target=({baseline:2,"weighted-routing":10,"identity-routing":10,failover:4})[job?.scenario];
+  text("counter",!job||awaiting||job.scenario==="reset"?"":target?`${count} / ${target} réponses HTTP`:`${count} réponse(s) HTTP · 10 au maximum`);
+  text("run-details",!job||awaiting?"Les actions sont publiées par la console. Le backend utilisé n’est affiché qu’après réception de sa trace Azure.":`${labels[job.status]} · modèle ${job.alias||"en cours de lecture"} · ${job.native.length}/${count} traces Azure · aucune écriture de configuration.`);
   const key=awaiting||!job||!last||launchError||(job.status==="failed"&&job.finishedAt)?"":`${job.id}:${events.length}`;
   if(key!==actionKey){
     actionKey=key;
-    const origin={"profile-applied":"applying-profile","profile-restored":"restoring"}[last?.kind], source=origin?events.findLast(x=>x.kind===origin):last;
+    const origin={"model-verified":"model-selected"}[last?.kind], source=origin?events.findLast(x=>x.kind===origin):last;
     details(el("action-details"),key&&source?explain(source,job):[]);
   }
   const feed=el("feed"), id=awaiting?null:job?.id;
@@ -297,16 +389,43 @@ function showActivity(job){
   }
   feedCount=events.length;
 }
-const baselineVizConfig={profile:"baseline",routes:[{alias:"demo-chat",targets:[{backend:1,priority:0,weight:1},{backend:2,priority:1,weight:1}]}],maxRetryAttempts:0,failures:[],policies:[]};
+const emptyVizConfig={routes:[],maxRetryAttempts:0,failures:[],policies:[]};
 const replaySteps={
-  baseline:[["configure","Profil initial"],["traffic","Appels A et B"],["evidence","Traces Azure"],["restore","Profil rétabli"]],
-  "weighted-routing":[["configure","Pondération 80/20"],["traffic","10 appels"],["evidence","Backends tracés"],["restore","Profil rétabli"]],
-  failover:[["primary","Route principale"],["fault1","Panne backend 1"],["retry","Bascule"],["excluded","Exclusion pour B"],["fault2","Panne backend 2"],["allDown","Erreur attendue"],["repair","Réparation"],["recovery","Récupération"],["evidence","Traces Azure"],["restore","Profil rétabli"]],
-  "token-rate":[["configure","Limite par minute"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Profil rétabli"]],
-  "token-quota":[["configure","Quota horaire"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Profil rétabli"]],
-  reset:[["configure","Profil initial"],["restore","Profil relu"]]
+  baseline:[["configure","Modèle de référence"],["traffic","Appels A et B"],["evidence","Traces Azure"],["restore","Configuration inchangée"]],
+  "weighted-routing":[["configure","Pondération fixe 80/20"],["traffic","10 appels"],["evidence","Backends tracés"],["restore","Configuration inchangée"]],
+  "identity-routing":[["configure","Condition d’identité fixe"],["traffic","5 A + 5 B"],["evidence","Identités et backends tracés"],["restore","Configuration inchangée"]],
+  failover:[["configure","Modèle panne fixe"],["retry","4 bascules natives"],["evidence","Traces Azure"],["restore","Configuration inchangée"]],
+  "token-rate":[["configure","Limite minute fixe"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Configuration inchangée"]],
+  "token-quota":[["configure","Quota horaire fixe"],["consume","Consommation A"],["continue","B continue"],["evidence","Rejets natifs"],["restore","Configuration inchangée"]],
+  reset:[["configure","Modèles fixes"],["restore","Définitions relues"]]
 };
-let replayState=null,replayTimer=null,vizRouteKey="",vizProofKey="",vizMeterKey="";
+let replayState=null,replayTimer=null,vizRouteKey="",vizProofKey="",vizMeterKey="",vizJobId=null;
+function resetDiagram(){
+  clearTimeout(replayTimer);replayTimer=null;replayState=null;
+  for(const id of ["viz-route-layer","viz-proof-layer","viz-call-layer","viz-meters","viz-steps","viz-caller-log"])clear(id);
+  vizRouteKey=vizProofKey=vizMeterKey="";
+  el("viz-identity-lock").setAttribute("visibility","hidden");
+  el("viz-replay-label").hidden=true;
+  for(const team of ["A","B"]){
+    el(`viz-packet-${team}`).hidden=true;
+    el(`viz-wire-${team}`).setAttribute("visibility","hidden");
+    el(`viz-wire-${team}`).classList.remove("is-source","is-current");
+    el(`viz-app-${team}`).classList.remove("is-source");
+    text(`viz-app-${team}-status`,"Identité dédiée");
+  }
+  text("viz-caller-status","Aucun appel affiché");
+  text("viz-caller-proof","Source publiée par la console ; backend en attente de trace native.");
+  for(const backend of [1,2]){
+    el(`viz-backend-${backend}`).classList.remove("is-down");
+    el(`viz-backend-${backend}-state`).classList.remove("is-confirmed","is-down");
+    text(`viz-backend-${backend}-state`,"État non vérifié");
+  }
+  text("viz-alias","Modèle : en attente");
+  text("viz-gateway-state","Nouveau scénario · aucune preuve précédente");
+  text("viz-gateway-policy","");
+  text("viz-caption","Aucun appel ni backend confirmé pour ce scénario.");
+  text("viz-quota-note","");
+}
 function svg(tag,attrs={},label){
   const n=document.createElementNS("http://www.w3.org/2000/svg",tag);
   for(const [key,value] of Object.entries(attrs))n.setAttribute(key,String(value));
@@ -320,8 +439,8 @@ function replayElapsed(now=performance.now()){
 }
 function stepForEvent(e){
   if(!e)return null;
-  if(["applying-profile","profile-applied"].includes(e.kind))return "configure";
-  if(["restoring","profile-restored","restored"].includes(e.kind))return "restore";
+  if(["model-selected","model-verified"].includes(e.kind))return "configure";
+  if(e.kind==="configuration-unchanged")return "restore";
   if(["awaiting-traces","traces","verifying","verified"].includes(e.kind))return "evidence";
   if(e.kind==="injecting")return Number(e.backend)===1?"fault1":"fault2";
   if(e.kind==="fault-propagation")return Number(e.backend)===1?"fault1":"fault2";
@@ -329,17 +448,64 @@ function stepForEvent(e){
   if(e.kind==="recovery-window")return "recovery";
   if(["sending","responded"].includes(e.kind)){
     if(e.phase==="primary"||e.phase==="healthy"||e.phase==="initial-A"||e.phase==="initial-B")return "primary";
-    if(e.phase==="failover")return "retry";
+    if(e.phase==="permanent-failover")return "retry";
     if(e.phase==="excluded")return "excluded";
     if(e.phase==="all-down")return "allDown";
     if(e.phase==="recovered"||e.phase==="recovered-secondary")return "recovery";
     if(e.phase==="consume-A"||e.phase==="still-rejected"||e.phase==="alternate-rejected")return "consume";
     if(e.phase==="B-continues"||e.phase==="B-alternate")return "continue";
-    if(e.phase==="weighted")return "traffic";
+    if(e.phase==="weighted"||e.phase==="identity-healthy")return "traffic";
   }
   return null;
 }
+function renderCaller(job,activity,native,replaying,identityRouting){
+  const calls=activity.filter(e=>e.kind==="sending"&&["A","B"].includes(e.team)&&Number.isInteger(e.number));
+  const latest=calls.at(-1);
+  const responseFor=call=>activity.find(e=>e.kind==="responded"&&e.number===call.number&&e.team===call.team&&e.alias===call.alias);
+  const requestFor=call=>{
+    const request=job.requests?.[call.number-1];
+    return request?.team===call.team&&request.alias===call.alias?request:null;
+  };
+  const proofFor=call=>{
+    if(!responseFor(call))return null;
+    const request=requestFor(call);
+    return request?native.find(row=>row.TraceId===request.traceId):null;
+  };
+  const interrupted=activity.some(e=>["stopped","failed"].includes(e.kind));
+  const current=Boolean(latest&&!responseFor(latest)&&!interrupted&&
+    (replaying||["configuring","running"].includes(job.status)));
+  const mode=replaying?"REJEU enregistré":current?(job.stopRequested?"En cours · arrêt demandé":"En cours"):"Dernier appel observé";
+  text("viz-caller-status",latest?`${mode} · appel ${latest.number} · Application ${latest.team} → Azure AI Gateway · ${latest.alias}`:"Aucun appel affiché");
+  const proofText=call=>{
+    const proof=proofFor(call),request=requestFor(call);
+    const rule=identityRouting?`Règle prévue : ${call.team==="B"?"B éligible uniquement sur Backend 2":"A conserve Backend 1 prioritaire"}. `:"";
+    return rule+(proof?.Backend?`Backend prouvé : ${proof.Backend} · trace ${request.traceId}.`:
+      responseFor(call)?`HTTP ${responseFor(call).status} · backend en attente de trace native.`:
+      interrupted?"Appel interrompu ou état final inconnu ; aucun backend déduit.":"Envoi publié par la console ; backend non encore prouvé.");
+  };
+  text("viz-caller-proof",latest?proofText(latest):"Source publiée par la console ; backend en attente de trace native.");
+  for(const team of ["A","B"]){
+    const source=latest?.team===team,wire=el(`viz-wire-${team}`);
+    el(`viz-app-${team}`).classList.toggle("is-source",source);
+    wire.classList.toggle("is-source",source);
+    wire.classList.toggle("is-current",source&&current&&(!replaying||replayState.playing));
+    text(`viz-app-${team}-status`,source?`${current?"Émet":"Dernier"} · appel ${latest.number}`:"Identité dédiée");
+    const packet=el(`viz-packet-${team}`);
+    packet.hidden=true;
+  }
+  const log=el("viz-caller-log");
+  const numbers=new Set(calls.map(call=>String(call.number)));
+  for(const item of [...log.children]){if(!numbers.has(item.dataset.number))item.remove()}
+  for(const call of calls){
+    let item=log.querySelector(`[data-number="${call.number}"]`);
+    if(!item){item=node("li");item.dataset.number=call.number;log.append(item)}
+    item.setAttribute("aria-current",call===latest?"true":"false");
+    item.textContent=`Appel ${call.number} · Application ${call.team} → ${call.alias} · ${proofText(call)}`;
+  }
+}
 function renderViz(job){
+  if(vizJobId!==(job?.id||null)){resetDiagram();vizJobId=job?.id||null}
+  if(!job){resetDiagram();return}
   const replaying=Boolean(replayState&&job&&replayState.jobId===job.id);
   const mobile=window.matchMedia("(max-width:600px)").matches;
   const topology=el("topology");
@@ -349,18 +515,21 @@ function renderViz(job){
   el("viz-gateway-node").setAttribute("transform",mobile?"translate(-310 80)":"");
   el("viz-backend-1-node").setAttribute("transform",mobile?"translate(-790 372)":"");
   el("viz-backend-2-node").setAttribute("transform",mobile?"translate(-600 242)":"");
-  el("viz-wire-A").setAttribute("d",mobile?"M190 61 C165 95 150 130 130 170":"M190 105 C245 105 285 145 350 150");
-  el("viz-wire-B").setAttribute("d",mobile?"M380 61 C300 95 280 130 260 170":"M190 235 C245 235 285 195 350 190");
+  el("viz-wire-A").setAttribute("d",mobile?"M190 105 C165 139 150 174 130 214":"M190 105 C245 105 285 145 350 150");
+  el("viz-wire-B").setAttribute("d",mobile?"M190 235 C110 269 90 304 70 344":"M190 235 C245 235 285 195 350 190");
   const activity=replaying?job.activity.slice(0,replayState.cursor+1):job?.activity||[];
   const responseCount=replaying?activity.filter(e=>e.kind==="responded").length:(job?.requests||[]).length;
   const requests=(job?.requests||[]).slice(0,responseCount);
   const requestIds=new Set(requests.map(r=>r.traceId));
-  const native=(job?.native||[]).filter(r=>requestIds.has(r.TraceId));
+  const native=(job?.native||[]).filter(r=>requestIds.has(r.TraceId)&&
+    (!replaying||activity.some(e=>e.kind==="verified"||(e.kind==="traces"&&e.count===(job.native||[]).length))));
   const configEvent=replaying
-    ?activity.findLast(e=>["applying-profile","restoring"].includes(e.kind)&&e.config)
-    :activity.findLast(e=>e.kind==="applying-profile"&&e.config)||activity.findLast(e=>e.kind==="restoring"&&e.config);
-  const config=shape(configEvent?.config)||baselineVizConfig;
+    ?activity.findLast(e=>e.kind==="model-selected"&&e.config)
+    :activity.findLast(e=>e.kind==="model-selected"&&e.config);
+  const config=shape(configEvent?.config)||emptyVizConfig;
   const faulted=new Set();
+  if(config.routes.some(r=>r.targets.some(t=>t.model==="demo-unavailable")))faulted.add(1);
+  for(const team of ["A","B"])el(`viz-wire-${team}`).setAttribute("visibility",configEvent?"visible":"hidden");
   for(const event of activity){
     if(event.kind==="injecting"||event.kind==="fault-propagation")faulted.add(Number(event.backend));
     if(event.kind==="repairing-routes"||event.kind==="repair"||event.kind==="profile-restored"||event.kind==="restored")faulted.clear();
@@ -371,10 +540,13 @@ function renderViz(job){
     label.classList.remove("is-confirmed");
     text(`viz-backend-${backend}-state`,down?"Panne simulée · en attente":"État non vérifié");
   }
-  const route= config.routes.find(r=>r.alias==="demo-chat");
+  const route=config.routes[0];
+  text("viz-alias",`Modèle : ${route?.alias||"en attente"}`);
   const routeLayer=el("viz-route-layer"),proofLayer=el("viz-proof-layer"),callLayer=el("viz-call-layer");
   clear("viz-call-layer");
   const targets=(route?.targets||[]).slice().sort((a,b)=>a.priority-b.priority||a.backend-b.backend);
+  const identityRouting=targets.some(t=>t.when);
+  el("viz-identity-lock").setAttribute("visibility",identityRouting?"visible":"hidden");
   const weighted=targets.length>1&&targets.every(t=>t.priority===targets[0].priority);
   const weightTotal=targets.reduce((sum,t)=>sum+(Number(t.weight)||0),0)||1;
   const paths=mobile
@@ -400,7 +572,7 @@ function renderViz(job){
       if(!d)continue;
       const width=weighted?2+7*(Number(target.weight)||0)/weightTotal:(target.priority===targets[0]?.priority?7:3);
       routeLayer.append(svg("path",{d,class:`viz-route${target.priority===targets[0]?.priority?"":" secondary"}`,"stroke-width":width}));
-      const value=weighted?`${Math.round(100*(Number(target.weight)||0)/weightTotal)} %`:`Priorité ${target.priority}`;
+      const value=target.model==="demo-unavailable"?"Panne permanente · 404":identityRouting?(backend===1?"A · priorité 0":"B · seul éligible"):weighted?`${Math.round(100*(Number(target.weight)||0)/weightTotal)} %`:`Priorité ${target.priority}`;
       routeLayer.append(svg("text",{x:point.x,y:point.y,class:"viz-small","text-anchor":"middle"},value));
     }
   }
@@ -415,21 +587,7 @@ function renderViz(job){
       }
     }
   }
-  const phaseEvent=activity.findLast(e=>e.kind==="sending"||e.kind==="responded");
-  for(const team of ["A","B"]){
-    const packet=el(`viz-packet-${team}`);
-    const sent=phaseEvent?.team===team;
-    packet.hidden=!sent;
-    if(sent){
-      const positions=mobile
-        ?{A:{send:[130,170],return:[100,61]},B:{send:[260,170],return:[295,61]}}
-        :{A:{send:[350,150],return:[190,105]},B:{send:[350,190],return:[190,235]}};
-      const [x,y]=positions[team][phaseEvent.kind==="sending"?"send":"return"];
-      packet.setAttribute("cx",x);packet.setAttribute("cy",y);
-      packet.setAttribute("aria-label",`Appel de l’équipe ${team}`);
-      packet.setAttribute("opacity",phaseEvent.kind==="responded"?.55:1);
-    }
-  }
+  renderCaller(job,activity,native,replaying,identityRouting);
   if(requests.length){
     callLayer.append(svg("text",{x:mobile?20:420,y:mobile?565:310,class:"viz-small"},"Appels observés · backend coloré seulement si confirmé"));
     requests.slice(0,10).forEach((r,index)=>{
@@ -442,19 +600,16 @@ function renderViz(job){
       dot.append(title);callLayer.append(dot);
     });
   }
-  const latest=activity.at(-1),restored=activity.some(e=>e.kind==="profile-restored"||e.kind==="restored");
-  let gatewayState=configEvent?"Écriture du profil dans Azure":"Profil de référence · non vérifié";
-  if(activity.some(e=>e.kind==="profile-applied"))gatewayState="Configuration relue par Azure";
-  if(activity.some(e=>e.kind==="restoring"))gatewayState="Restauration du profil initial en cours";
-  if(latest?.kind==="profile-restored"||latest?.kind==="restored")gatewayState="Profil initial relu par Azure";
-  if(job&&restored&&["verified","complete","stopped"].includes(job.status))gatewayState="Profil initial rétabli · configuration du scénario affichée";
-  const mobileState=gatewayState.startsWith("Profil initial rétabli")?"Profil initial rétabli":gatewayState;
+  const latest=activity.at(-1),restored=activity.some(e=>e.kind==="configuration-unchanged");
+  let gatewayState=configEvent?"Modèle fixe · lecture seule":"Lecture du modèle en cours";
+  if(activity.some(e=>e.kind==="model-verified"))gatewayState="Configuration fixe vérifiée";
+  const mobileState=gatewayState;
   text("viz-gateway-state",mobile?mobileState:gatewayState);
   const policy=config.policies.map(policyShort).join(" · ")||"Aucun quota configuré";
   const failures=config.failures||[],exclude=[...new Set(failures.map(f=>Number(f.excludeSeconds)).filter(Boolean))];
   const retry=config.maxRetryAttempts?`${config.maxRetryAttempts} nouvelle tentative · exclusion ${exclude.join("/")} s`:"Aucune règle de bascule";
-  text("viz-gateway-policy",config.policies.length?policy:retry);
-  const desc=`Applications A et B appellent demo-chat. ${targets.map(t=>`Backend ${t.backend}, ${weighted?`${Math.round(100*(Number(t.weight)||0)/weightTotal)} pour cent du poids`: `priorité ${t.priority}`}`).join("; ")||"aucune route décrite"}. ${native.length} preuve(s) native(s) reçue(s).`;
+  text("viz-gateway-policy",identityRouting?"Identité Entra validée → CEL → priorité":config.policies.length?policy:retry);
+  const desc=`Applications A et B appellent ${route?.alias||"un modèle non encore lu"}. ${targets.map(t=>`Backend ${t.backend}, ${weighted?`${Math.round(100*(Number(t.weight)||0)/weightTotal)} pour cent du poids`: `priorité ${t.priority}`}`).join("; ")||"aucune route décrite"}. ${native.length} preuve(s) native(s) reçue(s).`;
   el("viz-svg-desc").textContent=desc;
   const stageList=el("viz-steps");clear("viz-steps");
   const stages=replaySteps[job?.scenario]||replaySteps.baseline;
@@ -519,6 +674,47 @@ function tickReplay(){
 const el=id=>document.getElementById(id);
 function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function metric(parent,value,label){const n=node("div");n.append(node("strong",value),node("span",label));parent.append(n)}
+function updateModelTiles(){
+  const query=el("model-search").value.trim().toLocaleLowerCase("fr");
+  let visible=0;
+  for(const tile of el("model-tiles").children){
+    tile.disabled=el("scenario").disabled;
+    tile.setAttribute("aria-pressed",String(tile.dataset.scenario===el("scenario").value));
+    tile.hidden=!tile.textContent.toLocaleLowerCase("fr").includes(query);
+    if(!tile.hidden)visible++;
+  }
+  el("model-empty").hidden=visible!==0;
+}
+function renderPortal(jobs){
+  updateModelTiles();
+  const gatewayName=state.links.gateway?.match(/\/aigateways\/([^/]+)/)?.[1];
+  if(gatewayName){text("gateway-name",gatewayName);text("overview-gateway-name",gatewayName)}
+  const hostname=state.gateway;
+  const endpoint=typeof hostname==="string"&&/^[a-z0-9.-]+$/i.test(hostname)?`https://${hostname}`:null;
+  el("gateway-endpoint").value=endpoint||"Endpoint non encore disponible";
+  el("copy-endpoint").disabled=!endpoint;
+  const table=el("recent-rows");table.replaceChildren();
+  if(!jobs.length){
+    const row=node("tr"),cell=node("td","Aucune exécution. Sélectionnez un modèle, puis Start.");
+    cell.colSpan=5;row.append(cell);table.append(row);
+  }
+  for(const job of jobs.slice(0,5)){
+    const row=node("tr"),model=node("td"),button=node("button",job.alias||names[job.scenario]||job.scenario,"run-link");
+    button.type="button";button.addEventListener("click",()=>{
+      el("history").value=job.id;el("history").dispatchEvent(new Event("change"));
+      el("gateway-viz").scrollIntoView();el("viz-replay").focus({preventScroll:true});
+    });
+    model.append(button);
+    const time=job.activity?.at(-1)?.at||job.finishedAt||job.startedAt;
+    const ids=new Set((job.requests||[]).map(request=>request.traceId));
+    const native=(job.native||[]).filter(proof=>ids.has(proof.TraceId));
+    row.append(model,node("td",labels[job.status]||job.status),
+      node("td",runDate.format(new Date(time*1000))),node("td",String((job.requests||[]).length)),
+      node("td",`${native.length} / ${(job.requests||[]).length}`));
+    table.append(row);
+  }
+  text("recent-pagination",jobs.length?`1–${Math.min(5,jobs.length)} sur ${jobs.length} exécution${jobs.length>1?"s":""} · historique complet ci-dessous`:"Aucune exécution");
+}
 function render(){
   const latest=state.jobs.at(-1);
   text("status",state.busy&&latest?.stopRequested?"Arrêt en cours":state.busy?"Scénario en cours":state.ready?"Prêt pour la démo":"Initialisation");
@@ -529,11 +725,12 @@ function render(){
   if(jobs.some(j=>j.id===awaitingJob)){selected=awaitingJob;awaitingJob=null}
   el("start").disabled=el("scenario").disabled=launching||awaitingJob!==null||state.busy||!state.ready;
   if(state.busy&&latest)el("scenario").value=latest.scenario;
+  renderPortal(jobs);
   if(!jobs.some(j=>j.id===selected))selected=jobs[0]?.id;
   const history=el("history");history.replaceChildren();
   for(const j of jobs){const o=node("option",`${names[j.scenario]} · ${clock.format(new Date(j.startedAt*1000))} · ${labels[j.status]||j.status}`);o.value=j.id;o.selected=j.id===selected;history.append(o)}
   if(!jobs.length)history.append(node("option","Aucune exécution"));
-  const job=jobs.find(j=>j.id===selected);
+  const job=launching||awaitingJob?null:jobs.find(j=>j.id===selected);
   if(replayState&&replayState.jobId!==job?.id){clearTimeout(replayTimer);replayTimer=null;replayState=null}
   el("stop").disabled=!state.busy||!job||job.id!==latest?.id||job.scenario==="reset"||!["configuring","running","awaiting-native"].includes(job.status)||job.stopRequested||stopping===job.id;
   el("error").textContent=state.error||launchError||stopError||job?.error||"";
@@ -563,14 +760,14 @@ function render(){
     }
   }
 }
-async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");el("start").disabled=el("stop").disabled=el("scenario").disabled=true}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
+async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");for(const team of ["A","B"])el(`viz-wire-${team}`).classList.remove("is-current");text("viz-caller-status","Connexion interrompue · dernier appel conservé, aucun direct confirmé");el("start").disabled=el("stop").disabled=el("scenario").disabled=true;updateModelTiles()}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
 async function command(path,body){
   const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify(body)});
   if(!r.ok){const detail=await r.text();let msg;try{msg=JSON.parse(detail).error}catch{}throw Error(msg||`Commande refusée (HTTP ${r.status}).`)}
   return r.json();
 }
 el("start").addEventListener("click",async()=>{
-  launching=true;launchError=stopError="";render();
+  launching=true;selected=null;stopping=null;launchError=stopError="";resetDiagram();vizJobId=null;render();
   try{awaitingJob=(await command("/api/run",{scenario:el("scenario").value})).id}
   catch(e){launchError=e.message;text("error",launchError);text("action","Lancement non confirmé. Vérifiez l’historique avant de réessayer.");}
   finally{launching=false}
@@ -607,6 +804,43 @@ el("viz-fullscreen").addEventListener("click",async()=>{
   }catch(error){text("error",`Le plein écran n’a pas pu être activé : ${error.message}`)}
 });
 document.addEventListener("fullscreenchange",()=>text("viz-fullscreen",document.fullscreenElement?"Quitter le plein écran":"Plein écran"));
+for(const model of scenarioModels){
+  const tile=node("button",undefined,"model-tile"),icon=svg("svg",{class:"icon","aria-hidden":"true"});
+  icon.append(svg("use",{href:"#icon-model"}));
+  const label=node("span");label.append(node("strong",model.alias),node("small",model.summary));
+  tile.type="button";tile.dataset.scenario=model.scenario;tile.disabled=true;tile.setAttribute("aria-pressed","false");
+  tile.append(icon,label);tile.addEventListener("click",()=>{el("scenario").value=model.scenario;updateModelTiles()});
+  el("model-tiles").append(tile);
+}
+el("scenario").addEventListener("change",updateModelTiles);
+el("model-search").addEventListener("input",updateModelTiles);
+el("theme-toggle").addEventListener("click",()=>document.documentElement.setAttribute("data-theme",document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark"));
+function closeNavigation(){
+  document.body.classList.remove("nav-open");el("nav-toggle").setAttribute("aria-expanded","false");
+  el("nav-toggle").setAttribute("aria-label","Afficher la navigation");
+}
+el("nav-toggle").addEventListener("click",()=>{
+  const open=document.body.classList.toggle("nav-open");
+  el("nav-toggle").setAttribute("aria-expanded",String(open));
+  el("nav-toggle").setAttribute("aria-label",open?"Masquer la navigation":"Afficher la navigation");
+});
+for(const link of document.querySelectorAll(".sidebar a")){
+  link.addEventListener("click",()=>{
+    for(const item of document.querySelectorAll(".sidebar a"))item.removeAttribute("aria-current");
+    link.setAttribute("aria-current","page");closeNavigation();
+    const target=document.querySelector(link.getAttribute("href"));
+    target.tabIndex=-1;
+    if(link.hasAttribute("data-replay-nav")&&!el("viz-replay").disabled)el("viz-replay").focus({preventScroll:true});
+    else target.focus({preventScroll:true});
+  });
+}
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"&&document.body.classList.contains("nav-open")){closeNavigation();el("nav-toggle").focus()}
+});
+el("copy-endpoint").addEventListener("click",async()=>{
+  try{await navigator.clipboard.writeText(el("gateway-endpoint").value);text("copy-status","Endpoint copié. Les appels de la démo restent authentifiés côté serveur.")}
+  catch(error){text("copy-status",`Copie impossible : ${error.message}. Sélectionnez le champ pour le copier manuellement.`)}
+});
 poll();
 </script>
 </body>

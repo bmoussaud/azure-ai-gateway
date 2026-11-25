@@ -2,9 +2,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','token-rate','token-quota','cost-limit')][string]$Scenario,
-    [ValidateRange(50,200)][int]$Samples = 100,
+    [Parameter(Mandatory)][ValidateSet('baseline','weighted-routing','failover','identity-routing','token-rate','token-quota','cost-limit')][string]$Scenario,
+    [ValidateRange(1,10)][int]$Samples = 10,
     [switch]$WorkshopRouting,
+    [switch]$IdentityBackendFault,
     # The demo-alt alias stays deployed; its calls are opt-in CLI checks (both backends, no quota bypass by alias).
     [switch]$IncludeAlternateAlias,
     [string]$BaselineEvidencePath,
@@ -29,16 +30,15 @@ $ids = Get-DemoIds $config
 $tokenA = Get-DemoToken A $config
 $tokenB = Get-DemoToken B $config
 $endpoint = Get-DemoRuntimeEndpoint $state
+if ($IdentityBackendFault -or $IncludeAlternateAlias) { throw 'Fixed scenarios never mutate endpoints or call a different alias.' }
+if ($Scenario -eq 'cost-limit') { throw 'Cost remains disabled: native price_missing=true has not been resolved.' }
 if ($WorkshopRouting) {
     if ($Scenario -ne 'weighted-routing' -or $PSBoundParameters.ContainsKey('Samples')) {
         throw 'Workshop routing is a fixed ten-call weighted demonstration.'
     }
 }
-$requests = if ($Scenario -eq 'weighted-routing') { $Samples } elseif ($Scenario -eq 'failover') { 8 } else { 12 }
-if ($WorkshopRouting) { $requests = 10 }
+$requests = switch ($Scenario) { baseline { 2 } weighted-routing { $Samples } failover { 4 } default { 10 } }
 $attempts = if ($Scenario -eq 'failover') { 2 } else { 1 }
-# Native traces showed a simulated fault takes about 6-11 s to reach the gateway data plane after ARM confirms it.
-$faultPropagationSeconds = 20
 $estimate = Assert-DemoRunBudget $config $requests $attempts
 $delaySeconds = 0
 foreach ($project in $state.projects.Values) {
@@ -47,10 +47,11 @@ foreach ($project in $state.projects.Values) {
     if (-not @($limits | Where-Object key -eq 'request').Count) { throw 'The real backend request-rate limit must be known before traffic.' }
     foreach ($limit in $limits) {
         if ($limit.count -le 0 -or $limit.renewalPeriod -le 0) { throw 'Invalid live backend rate limit.' }
-        $units = if ($limit.key -eq 'token') { 1088 * $attempts } else { $attempts }
+        # Failover's permanent invalid path cannot consume model tokens. Each backend gets at most one send.
+        $units = if ($limit.key -eq 'token') { 1088 } else { 1 }
         $delaySeconds = [Math]::Max($delaySeconds, [Math]::Ceiling($units * $limit.renewalPeriod / $limit.count))
     }
-    if ($WorkshopRouting -and $delaySeconds -gt 2) {
+    if ($delaySeconds -gt 2) {
         throw "Backend capacity requires $delaySeconds seconds between sends. Increase backend capacity before running the two-second workshop demo."
     }
 }
@@ -61,10 +62,12 @@ $runId = [guid]::NewGuid().ToString('N')
 $null = New-Item -ItemType Directory -Path $OutputDirectory -Force
 $resultPath = Join-Path $OutputDirectory "$runId.json"
 $results = [Collections.Generic.List[object]]::new()
-$savedModels = @{}
 $restorationFailures = [Collections.Generic.List[string]]::new()
 $outcome = 'incomplete'
 $pacing = [Diagnostics.Stopwatch]::new()
+$baselineBefore = Get-DemoArmEnvelope "$($ids.workspace)/aliases/demo-chat"
+$configurationUnchanged = $false
+$alias = ''
 
 function Assert-ScenarioActive {
     if ($StopPath -and (Test-Path -LiteralPath $StopPath)) {
@@ -107,78 +110,46 @@ function Assert-Completion($Result) {
     if (-not $Result.completion) { throw "Expected a real completion; HTTP $($Result.status), trace $($Result.traceId)." }
 }
 
-function Set-LabPathFault([int]$Backend) {
-    Assert-ScenarioActive
-    $id = "$($ids.workspace)/modelProviders/backend-$Backend/models/demo-model"
-    if (-not $savedModels.ContainsKey($id)) {
-        $model = Get-DemoArm $id
-        if (-not $model.properties.ContainsKey('endpoints') -or $model.properties.endpoints.Count -ne 1) {
-            throw 'Lab fault requires an explicit single endpoint mapping so restoration is exact.'
-        }
-        $savedModels[$id] = @($model.properties.endpoints)
-    }
-    Write-Activity 'injecting' @{backend=$Backend}
-    Set-DemoArmProperties $id @{ endpoints = @(@{ api='v1/chat/completions'; path='/demo-injected-unavailable' }) }
-    Write-Activity 'fault-propagation' @{backend=$Backend; seconds=$faultPropagationSeconds}
-    Wait-Scenario ($faultPropagationSeconds * 1000)
-}
-
 try {
     Assert-ScenarioActive
-    Write-Activity 'applying-profile' @{config=(Get-DemoProfileSummary $config $Scenario)}
-    Set-DemoProfile $config $Scenario
-    Write-Activity 'profile-applied'
-    $second = [DateTimeOffset]::UtcNow.Second
-    if ($Scenario -eq 'token-rate' -and $second -gt 5) {
-        Write-Activity 'quota-window' @{seconds=61 - $second}
-        Wait-Scenario ((61 - $second) * 1000)
-    }
+    Write-Activity 'model-selected' @{config=(Get-DemoProfileSummary $config $Scenario)}
+    $alias = Assert-DemoFixedScenario $config $Scenario
+    Write-Activity 'model-verified' @{alias=$alias}
     switch ($Scenario) {
         baseline {
-            $aliases = if ($IncludeAlternateAlias) { @('demo-chat','demo-alt') } else { @('demo-chat') }
             foreach ($team in @('A','B')) {
-                foreach ($alias in $aliases) { Assert-Completion (Send-ScenarioCall $team $alias 'healthy') }
+                Assert-Completion (Send-ScenarioCall $team $alias 'healthy')
             }
         }
         weighted-routing {
-            for ($i=0; $i -lt $requests; $i++) { Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'weighted') }
+            for ($i=0; $i -lt $requests; $i++) { Assert-Completion (Send-ScenarioCall 'A' $alias 'weighted') }
+        }
+        identity-routing {
+            for ($i=0; $i -lt 5; $i++) {
+                foreach ($team in @('A','B')) { Assert-Completion (Send-ScenarioCall $team $alias 'identity-healthy') }
+            }
         }
         failover {
-            Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'primary')
-            if ($IncludeAlternateAlias) { Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'secondary') }
-            Set-LabPathFault 1
-            Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'failover')
-            # Exclusion is a gateway-wide backend state, so team B also skips the failed backend.
-            Assert-Completion (Send-ScenarioCall ($IncludeAlternateAlias ? 'A' : 'B') 'demo-chat' 'excluded')
-            Set-LabPathFault 2
-            $failed = Send-ScenarioCall 'A' 'demo-chat' 'all-down'
-            if ($failed.status -lt 400) { throw 'All-down must produce an explicit HTTP error.' }
-            Write-Activity 'repairing-routes'
-            foreach ($id in @($savedModels.Keys)) { Set-DemoArmProperties $id @{ endpoints=$savedModels[$id] } }
-            Write-Activity 'recovery-window' @{seconds=35}
-            Wait-Scenario 35000
-            Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'recovered')
-            if ($IncludeAlternateAlias) { Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'recovered-secondary') }
-            else { Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'recovered') }
+            foreach ($team in @('A','B','A','B')) {
+                Assert-Completion (Send-ScenarioCall $team $alias 'permanent-failover')
+            }
         }
         { $_ -in @('token-rate','token-quota','cost-limit') } {
-            Assert-Completion (Send-ScenarioCall 'A' 'demo-chat' 'initial-A')
-            Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'initial-B')
-            $rejected = $false
+            # Fixed counters survive launches and Stop. A may already be exhausted on a replay.
+            $initial = Send-ScenarioCall 'A' $alias 'initial-A'
+            if ($initial.status -lt 400) { Assert-Completion $initial }
+            Assert-Completion (Send-ScenarioCall 'B' $alias 'initial-B')
+            $rejected = $initial.status -ge 400
             for ($i=0; $i -lt 6; $i++) {
-                $r = Send-ScenarioCall 'A' 'demo-chat' 'consume-A'
+                if ($rejected) { break }
+                $r = Send-ScenarioCall 'A' $alias 'consume-A'
                 if ($r.status -ge 400) { $rejected=$true; break }
                 Assert-Completion $r
             }
             if (-not $rejected) { throw 'Inconclusive: no rejection within the bounded allowance test. Do not increase traffic automatically.' }
-            $retry = Send-ScenarioCall 'A' 'demo-chat' 'still-rejected'
+            $retry = Send-ScenarioCall 'A' $alias 'still-rejected'
             if ($retry.status -lt 400) { throw 'Allowance was renewed or not yet consistently enforced.' }
-            Assert-Completion (Send-ScenarioCall 'B' 'demo-chat' 'B-continues')
-            if ($IncludeAlternateAlias) {
-                $alternate = Send-ScenarioCall 'A' 'demo-alt' 'alternate-rejected'
-                if ($alternate.status -lt 400) { throw 'Allowance was bypassed, renewed, or not yet consistently enforced.' }
-                Assert-Completion (Send-ScenarioCall 'B' 'demo-alt' 'B-alternate')
-            }
+            Assert-Completion (Send-ScenarioCall 'B' $alias 'B-continues')
         }
     }
     $outcome = 'http-observed-awaiting-native-telemetry'
@@ -186,24 +157,24 @@ try {
     if (-not $StopPath -or -not (Test-Path -LiteralPath $StopPath)) { throw }
     $outcome = 'stopped-by-operator'
 } finally {
-    # Failure to publish progress must never prevent restoration.
-    try { Write-Activity 'restoring' @{config=(Get-DemoProfileSummary $config baseline); repairs=$savedModels.Count} }
-    catch { Write-Warning 'Could not publish restoration progress.' }
-    foreach ($id in @($savedModels.Keys)) {
-        try { Set-DemoArmProperties $id @{ endpoints=$savedModels[$id] } }
-        catch { $restorationFailures.Add("Failed to restore $id : $($_.Exception.Message)") }
-    }
     try {
-        Set-DemoProfile $config baseline
-        try { Write-Activity 'profile-restored' } catch { Write-Warning 'Could not publish restoration confirmation.' }
+        $baselineAfter = Get-DemoArmEnvelope "$($ids.workspace)/aliases/demo-chat"
+        $configurationUnchanged = $baselineBefore.etag -ceq $baselineAfter.etag -and
+            (Test-DemoSubset $baselineBefore.body $baselineAfter.body) -and (Test-DemoSubset $baselineAfter.body $baselineBefore.body)
+        if (-not $configurationUnchanged) { throw 'demo-chat changed during a read-only scenario.' }
+        Write-Activity 'configuration-unchanged'
     }
-    catch { $restorationFailures.Add("Failed to restore baseline: $($_.Exception.Message)") }
+    catch { $restorationFailures.Add("Fixed configuration verification failed: $($_.Exception.Message)") }
     @{
         runId=$runId; scenario=$Scenario; gatewayId=$state.gatewayId; outcome=$outcome
         startedBy='PowerShell lab runner'; concurrency=1; clientRetries=0
         conservativeTokenCostEstimateUsd=$estimate; requestCeiling=$requests
         minimumInterRequestSpacingSeconds=$delaySeconds
         workshopRouting=[bool]$WorkshopRouting
+        alias=$alias; configurationMode='fixed-alias'; configurationUnchanged=$configurationUnchanged
+        baselineEtagBefore=$baselineBefore.etag
+        baselineEtagAfter=$(if ($configurationUnchanged) { $baselineAfter.etag } else { '' })
+        identityBackendFault=$false
         restorationFailures=@($restorationFailures); results=@($results.ToArray())
     } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $resultPath
     Write-Host "HTTP observations saved: $resultPath. Not a native gateway proof until verify-results.ps1 succeeds."

@@ -31,6 +31,14 @@ resource operator 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
   location: location
   tags: tags
 }
+module callerMonitoring './console-monitoring.bicep' = {
+  name: 'console-caller-monitoring'
+  dependsOn: [operator]
+  params: {
+    prefix: prefix
+    insightsName: '${prefix}-insights'
+  }
+}
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: 'aigw${uniqueString(resourceGroup().id)}'
   location: location
@@ -64,29 +72,9 @@ resource logReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')
   }
 }
-resource scenarioRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
-  name: guid(resourceGroup().id, 'console-scenario-operator')
-  properties: {
-    roleName: '${prefix} bounded scenario operator'
-    description: 'Only versioned lab workspace, alias and model mapping changes. No inference or IAM permissions.'
-    type: 'CustomRole'
-    assignableScopes: [resourceGroup().id]
-    permissions: [{
-      actions: [
-        'Microsoft.ApiManagement/aigateways/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/write'
-        'Microsoft.ApiManagement/aigateways/workspaces/aliases/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/aliases/write'
-        'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models/read'
-        'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models/write'
-      ]
-      notActions: []
-      dataActions: []
-      notDataActions: []
-    }]
-  }
+module scenarioRole './console-role.bicep' = {
+  name: 'console-read-only-role'
+  params: { prefix: prefix }
 }
 resource scenarioGrant 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(gateway.id, operator.id, 'scenario-operator')
@@ -94,7 +82,7 @@ resource scenarioGrant 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   properties: {
     principalId: operator.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: scenarioRole.id
+    roleDefinitionId: scenarioRole.outputs.id
   }
 }
 resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -157,6 +145,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = if (deployApp) {
           { name: 'DEMO_STATE_JSON', value: demoState }
           { name: 'DEMO_AUTH_MODE', value: authMode }
           { name: 'CONSOLE_AUTH_RESOURCE', value: authMode == 'entra' ? 'api://${authClientId}' : '' }
+          {
+            name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+            value: callerMonitoring.outputs.connectionString
+          }
         ]
         resources: { cpu: json('0.5'), memory: '1Gi' }
         probes: [

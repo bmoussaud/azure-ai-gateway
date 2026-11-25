@@ -1,226 +1,387 @@
-# Operator guide
+# Guide de démonstration
 
-## Acceptance status
+## Principe : choisir un modèle, pas reconfigurer la passerelle
 
-The dedicated Azure foundation was deployed on 2026-11-24 in East US 2: Standard gateway, two GPT-6 Sol `2026-09-22` GlobalStandard backends, managed callers A/B, native OTLP monitoring and Workbook. Native records verified the four baseline calls, 40/50 primary selections in the weighted run, complete failover/exclusion/all-down/recovery, and minute/hour token rejection across both aliases while B continued. All three deployed Workbook queries executed successfully. Native pricing completeness remains blocked; see the acceptance notes below. Synthetic tests are never gateway results.
+Les alias, stratégies et conditions sont déployés une fois avec Bicep.
+Pendant la présentation, l'application ne change que le champ `model` envoyé
+à la même URL Chat Completions. Le runner et la console ne font aucune écriture
+ARM, même au démarrage, après Stop ou après une erreur.
 
-Use the [capability matrix](capabilities.md) for the public contracts and remaining uncertainties. The deployment entrypoint is `infra\demo.bicep`, at subscription scope. `infra\main.bicep` is its Foundry backend module, not a standalone gateway deployment.
+| Scénario | Alias appelé | Ce qu'on montre |
+|---|---|---|
+| Référence A/B | `demo-chat` | Deux appels, A puis B ; Backend 1 prioritaire. |
+| Pondération 80/20 | `scenario-weighted-80-20` | Dix appels, priorités égales et poids 80/20. Les nombres observés ne promettent pas exactement 8/2. |
+| Basculement | `scenario-failover` | Quatre appels A/B ; modèle de laboratoire `backend-fault/demo-unavailable` en priorité 0, Backend 2 en priorité 1, une tentative supplémentaire native. |
+| Limite minute | `scenario-token-rate` | Stratégie fixe 256 tokens/minute par identité sur cet alias ; A reçoit un rejet natif 429, B continue. |
+| Quota horaire | `scenario-token-quota` | Stratégie fixe 256 tokens/heure par identité sur cet alias ; A reçoit un rejet natif 403, B continue. |
+| Identité de l'appelant | `scenario-identity` | Cinq A et cinq B : CEL exclut B de Backend 1 ; B ne peut sélectionner que Backend 2. |
+| Vérifier les modèles fixes | Aucun appel d'inférence | Relire les six définitions ; aucune remise à zéro ni écriture. |
+| Coût | Désactivé | `price_missing=true` interdit de certifier la limite monétaire, même avec des coûts estimés non nuls. |
 
-## 1. Select the dedicated target
+`demo-alt` reste déployé et autorisé mais caché ; aucun scénario courant ne
+l'appelle. A/B ont chacun Models User sur les sept alias, jamais sur les comptes
+Foundry. Ce RBAC autorise un alias, pas un backend spécifique.
 
-### Browser console (Entra-protected HTTPS)
+## Présenter la console
 
-The optional console shows Application A and Application B side by side and runs the same versioned PowerShell scenarios, not a second approximation of gateway behavior:
+Utiliser l'URL HTTPS imprimée par `deploy-console.ps1`. Connexion Entra obligatoire,
+limitée à l'utilisateur opérateur et à l'identité managée d'acceptation.
+L'authentification native, son allowlist exacte et les protections Origin/CSRF
+restent actives ; aucun endpoint anonyme ne consomme des tokens. Les jetons A/B
+restent côté serveur. Les identités A/B ne peuvent pas opérer la console.
 
-```powershell
-.\scripts\deploy-console.ps1 -ConfigPath .\config\demo.local.json
-# Prints the service-assigned HTTPS URL and saves .demo\console-deployment.json.
-python -m unittest discover -s .\tests -p test_console.py
-# Real HTTPS acceptance: use an authorized bearer only in this process environment.
-# Prefer the server-side helper below; never paste credentials into commands or evidence.
-.\scripts\verify-console.ps1 -Url '<deployed-console-https-url>'
+1. Choisir le scénario, puis **Start**. Dire : « Nous appelons le modèle affiché,
+   déjà configuré dans Azure. Nous ne changeons aucune règle pendant la démo. »
+2. Le diagramme précédent est entièrement effacé : routes, preuves, compteurs,
+   cadenas, badges et états. Le journal décrit l'alias et sa configuration fixe.
+   Les pointillés décrivent cette configuration, pas un backend réellement servi.
+3. Les statuts HTTP, tokens et trace IDs arrivent immédiatement. Attendre
+   **Vérifié** : seuls les backends joints aux traces Azure natives par trace ID
+   produisent les traits verts et résultats de backend.
+4. **Stop** laisse finir l'opération en cours, empêche les appels suivants et garde
+   les réponses déjà reçues. Une exécution partielle n'est jamais certifiée.
+   Il n'y a aucune configuration à restaurer.
+5. Le contrôle final relit intégralement `demo-chat` et son ETag : ils doivent
+   être identiques. Une différence bloque la certification, sans réparation cachée.
+
+Au plus dix appels par scénario, un appel en vol, zéro retry client, au plus deux
+secondes d'attente intentionnelle entre appels. Latence du modèle et ingestion
+Application Insights sont séparées. La capacité réelle des deux déploiements
+est lue avant le trafic ; une capacité insuffisante provoque un refus explicite.
+La qualification dédiée utilise 40 RPM/40 000 TPM par backend.
+
+**Rejouer** anime uniquement les événements enregistrés, sans trafic.
+**Plein écran** facilite la projection. Un rafraîchissement ne déclenche pas
+d'inférence. Les historiques sont bornés et éphémères : préserver les preuves
+avant redémarrage. Une télémétrie absente ou retardée est inconnue, pas un succès.
+
+### Voir quelle application appelle
+
+La console adopte le style du portail AI Gateway, sans logo ni asset copié et avec
+un libellé explicite **console de démo, pas le portail officiel**. La navigation
+latérale rejoint l'accueil, les modèles, les scénarios, la carte, le journal,
+le rejeu et les preuves ; sur mobile, le bouton menu la replie.
+Les six tuiles sélectionnent un scénario sans envoyer de trafic : cliquer ensuite
+sur **Start**. La recherche filtre ces tuiles, pas la configuration Azure.
+La carte de connexion copie l'endpoint public ; aucune clé ni jeton n'est exposé.
+Le tableau des cinq dernières exécutions ouvre leur carte et l'historique complet
+reste disponible dans le sélecteur « Exécution affichée ».
+
+La refonte visuelle est déployée sur la révision `0000019`, active et Healthy.
+Son HTML correspond exactement au fichier testé (SHA-256 comparé dans le conteneur).
+La recette HTTPS identité a confirmé dix HTTP 200, A 5/5 sur Backend 1,
+B 5/5 sur Backend 2, zéro retry client et les protections Entra/CSRF/concurrence.
+Les sept alias restent identiques, corps complets et ETags inclus.
+Preuves : `.demo\portal-identity-acceptance.json`, `.demo\portal-deployment.json`,
+`.demo\portal-aliases-before.json` et `.demo\portal-aliases-after.json`.
+Les captures desktop/mobile `.demo\portal-ui\portal-*.png` montrent le nouveau
+HTML en Chromium local avec les événements HTTPS réels de la recette `0000018`
+rejoués, notamment B à l'envoi, sans backend encore prouvé. Elles ne sont pas
+des captures d'une session navigateur Azure authentifiée en direct.
+
+Dès l'événement d'envoi, le bandeau affiche **En cours · appel N · Application
+A/B → Azure AI Gateway**, avec l'alias appelé. Le nœud source et son seul segment
+entrant sont mis en évidence ; les pointillés animés avancent vers la passerelle.
+Les libellés « Émet · appel N » et « Dernier appel observé » distinguent l'appel
+en vol du dernier appel terminé, sans dépendre de la couleur.
+
+Le numéro et l'application viennent des événements `sending`/`responded` publiés
+par la console : jamais de la parité du numéro ou d'une alternance supposée.
+Le registre sous la carte conserve **tous** les envois, même si plusieurs sont
+reçus dans un seul rafraîchissement. Les appels déjà terminés sont présentés
+comme observations passées, pas rejoués en prétendant être du direct.
+Un rafraîchissement identique ne redémarre pas l'animation.
+
+Dans le scénario identité, le bandeau distingue **Règle prévue** et **Backend
+prouvé** pour ce même appel. Une trace retardée de l'appel précédent enrichit
+uniquement sa propre ligne ; elle ne change jamais l'identité de l'appel en vol.
+La preuve est jointe par trace ID, après la réponse correspondant au numéro,
+à l'application et à l'alias de cet envoi.
+
+En **Rejouer**, le repère porte explicitement **REJEU enregistré** avec les mêmes
+numéros et applications ; les backends ne sont révélés qu'à l'étape d'ingestion
+enregistrée. Pause arrête le mouvement. La préférence système de mouvement réduit
+supprime l'animation mais conserve les libellés/source. Stop garde l'appel en vol
+identifié jusqu'à sa fin ; un arrêt final ou une déconnexion ne prétend plus
+montrer un flux actif. Start efface aussi ce registre et les mises en évidence.
+
+La recette Chromium couvre A→B, B→B→A, les traces retardées, plusieurs événements
+reçus ensemble, Stop, Start, rechargement et mouvement réduit. Le retour en arrière
+dans un rejeu de dix appels retire toutes les lignes futures ; avancer les remet
+dans l'ordre, sans révéler prématurément leurs preuves.
+
+La livraison du repère d'appelant a été déployée en révision prête `0000018`. La recette identité HTTPS
+de cette révision a confirmé A 5/5 sur Backend 1, B 5/5 sur Backend 2,
+dix HTTP 200 et zéro retry client, avec protection Entra/CSRF/concurrence conservée.
+Preuves locales : `.demo\caller-final-identity-acceptance.json`,
+`.demo\caller-ready-final.json` et `.demo\caller-aliases-final.json`.
+Les sept alias restent identiques, corps et ETags inclus.
+Les captures `.demo\caller-ui\caller-native-replay-*.png` sont un **rejeu Chromium
+local des vrais événements HTTPS et traces natives**, pas une capture de session
+navigateur authentifiée sur Azure. Aucune nouvelle observation visuelle du portail
+Application Insights n'est revendiquée.
+
+### Identité : B vers Backend 2
+
+Lire dans le journal la condition portée par Backend 1 :
+
+```text
+@cel(!(has(authorization.identity) && has(authorization.identity.id) &&
+       authorization.identity.id == '<tenantId>:<objectIdB>'))
 ```
 
-The deployment bootstraps behind an operator IPv4 /32, then `enable-console-auth.ps1` configures native Container Apps Easy Auth. **Entra authentication is mandatory** and its exact-principal allowlist contains only the signed-in deploying user and dedicated operator managed identity. Other tenant users and the A/B application identities cannot operate the console. Only read-only `/health` is excluded. HTTPS, single-tenant issuer, explicit audiences and a server-side client secret are enforced; no directory API permissions are granted. A GET confirms native authentication and the exact allowlist **before** the unreliable NAT-based ingress restriction is removed. Unauthenticated clients are redirected to Entra, not given scenario access.
+Le tenant et l'object ID validés sont normalisés en minuscules au déploiement.
+Azure évalue les conditions avant priorité, poids et affinité, y compris après un
+échec. Aucun header fourni par le client ne décide du backend.
+Backend 2 n'a aucune condition. A conserve donc Backend 1 prioritaire.
+Le cadenas est une règle configurée, jamais une preuve d'exécution.
 
-The operator must be able to create and own this dedicated Entra application registration as well as deploy Azure resources. Directory registration/service-principal/password operations use versioned Graph/Azure CLI contracts because these directory objects are not ARM resources; native authorization is in `infra\console-auth.bicep`. Non-secret registration IDs are saved only in the ignored local configuration. The 30-day browser-login credential is passed through a secure Bicep parameter, stored as a Container Apps secret, never exposed in container environment variables, and removed from the temporary parameter file in `finally`. Re-running `enable-console-auth.ps1` reuses a current secret or rotates one within two days of expiry.
+Dire : « On peut segmenter par identité d'application vers un déploiement dédié,
+un modèle ou un quota d'équipe. Ici, nous prouvons seulement la sélection des
+deux backends du même modèle. » Les compteurs A/B sont par application, pas un
+budget partagé de groupe Entra.
 
-Use the printed `/.auth/login/aad` entry URL for a first visit, then return to the website. A non-browser anonymous request can receive 401 rather than an interactive redirect. The exact console origin is explicitly included in `login.allowedExternalRedirectUrls`: native Easy Auth otherwise rejects browser-cookie POSTs with an empty 403 before they reach the application. This preserves its [CSRF protection](https://learn.microsoft.com/azure/app-service/overview-authentication-authorization#mitigation-of-cross-site-request-forgery), rather than disabling it. The application's own same-origin/CSRF checks remain mandatory.
+**Hard pin** : si Backend 2 tombe, B doit échouer sans repli vers Backend 1,
+pendant que A peut continuer. Ce n'est pas une garantie de disponibilité, ni une
+interdiction d'utiliser un autre alias déjà autorisé. Le contrôle négatif historique
+est conservé dans `.demo\5a944b9d63a346c5acd1cd4d2d3698f2{,.verified}.json` :
+B sain 200, B sous panne 404 avec une seule tentative, deux A 200 sur Backend 1.
+Ce test antérieur modifiait temporairement un endpoint ; son ancien switch
+`-IdentityBackendFault` est désormais refusé pour préserver les configurations fixes.
 
-Browser acceptance on 2026-11-24 completed an actual signed-in HTTPS baseline: two A calls, two B calls, both aliases and both native backends, HTTP 200 and 17 tokens each, four matching native records, strict verification and confirmed automatic baseline restoration. Other scenario engines were already qualified through the CLI; the complete browser scenario sequence was not rerun for this accelerated delivery.
+### Basculement permanent de laboratoire
 
-For unattended acceptance without exposing an Azure credential locally or in the browser, run the owned-container helper through authenticated Azure control-plane exec:
+Seul `scenario-failover` référence le fournisseur dédié `backend-fault` dont
+l'adresse porte un préfixe volontairement invalide. Les deux fournisseurs réels
+restent intacts. Le premier envoi doit échouer, puis la passerelle sélectionne
+Backend 2 ; le client ne réessaie pas. La règle 404 est propre au laboratoire.
+Pas d'exclusion persistante : chaque appel doit montrer deux tentatives natives.
 
-```powershell
-az containerapp exec --subscription '<subscription-id>' --resource-group '<dedicated-group>' `
-  --name '<gateway-name>-console' --command 'python3 /app/console/operate.py accept'
-```
+Ne pas présenter cette panne permanente comme une panne régionale, une panne
+réseau ou une démonstration de récupération. L'ancien scénario
+exclusion/tous-backends-indisponibles/récupération n'est plus exécuté.
 
-It verifies an anonymous redirect and a wrong-principal 403, then obtains the exact operator MI token in memory and drives the real public HTTPS origin. It sends bounded baseline, failover and minute-governance traffic, then resets. Only credential-free results are saved to `/tmp/console-acceptance.json`; preserve them before restarting the app. Do not run acceptance while someone is operating a scenario.
+### Compteurs persistants
 
-Inference tokens remain server-side. The existing A/B managed identities perform inference; a separate managed operator identity has demo-group read access, Log Analytics read access and only workspace/alias/model configuration writes scoped to this gateway. It cannot grant permissions or call models as an operator. ACR pull is scoped to the dedicated registry. Images are built with `az acr build` and deployed by immutable digest; the base images are also digest pinned.
+Les stratégies de tokens ont `scope: "resource"` et `counterKey: ["identity"]`.
+Chaque alias a ses propres compteurs A/B. Changer d'alias change volontairement
+de stratégie : **ce n'est pas une enveloppe globale anti-contournement**.
+Une nouvelle exécution peut commencer avec A déjà épuisée.
+Ni Start, ni Stop, ni « Vérifier » ne réinitialisent les compteurs ; attendre leur
+renouvellement naturel. Un changement de fenêtre pendant le test peut rendre
+l'assertion inconclusive : ne pas masquer cette erreur ou relancer automatiquement.
 
-Baseline, 80/20, failover/recovery, minute token allowance, hourly allowance and reset controls invoke fixed scripts with bounded synthetic prompts. There is no arbitrary prompt/command endpoint. The cost button remains disabled while native pricing is incomplete. GET is read-only; POST requires same-origin and a per-process CSRF token. A single replica and process-wide lock serialize the complete scenario and native verification. Redeployment first places the old console in maintenance and refuses any running scenario. Do not operate CLI/portal mutations concurrently.
+L'usage déjà admis peut dépasser 256 tokens ; il ne s'agit pas d'un plafond strict.
+Le runner ajoute seulement à A des entrées synthétiques bornées (640 marqueurs
+pour minute, 160 pour heure), B conservant le court prompt témoin.
+Les jauges représentent l'usage des réponses observées, pas les compteurs internes.
 
-HTTP status, observed token usage, latency and trace IDs arrive first. Backend selection, policy error origin and estimated cost appear **only after joining actual native telemetry**, sometimes several minutes later. `verified` requires the existing strict native verifier to pass. Missing telemetry is unknown, not zero or success. Runs restore baseline in `finally`; startup repairs only recognized demo faults. Failed restoration disables controls and requires an explicit operator reset/redeployment. Histories are bounded to 20 runs and are ephemeral across app restarts; preserve acceptance evidence outside the container.
+## Déployer et vérifier
 
-The browser 80/20 demo sends 10 requests with at most two seconds of intentional pacing between calls (model latency, setup, restoration and telemetry ingestion are separate). The runner checks both live backend capacities before traffic rather than ignoring throttling limits. For this model the workshop uses capacity 40 per deployment. The UI reports actual backend counts, not a promised 8/2 split or statistical proof. The separate CLI qualification still supports 50–200 samples. Browser runs use only the `demo-chat` alias: baseline emits two calls (A and B), failover six, and allowance checks never exceed 12. There are no client retries. Failover waits 20 s after each simulated fault is confirmed by ARM, because native traces showed the gateway data plane needs about 6–11 s to apply it; team B then demonstrates that the exclusion is gateway-wide. Failover deliberately includes an all-backends-down error before recovery; an HTTP error in that phase is expected. Governance rejection must be native `tokenLimit`, with B continuing successfully.
-
-**Presenting the live run:** select *Tester A et B*, press **Start**, and follow *Fil d’exécution*. Selection alone sends no traffic. **Stop** targets the displayed active run; it lets an in-flight operation finish, prevents further inference calls at the next checkpoint, and preserves observed responses. The lock remains held through restoration. A stopped run is partial, never certified. Reset itself cannot be interrupted. The current action and timestamped journal come from worker events, including actual sends, responses, rate-limit pauses, controlled faults and restoration. Each configuration step explains the scenario goal and the profile actually written: per-alias routing (priority or 80/20 weights), failover rules (trigger codes, one retry on the other backend, 30 s exclusion) and per-identity token limits. "Azure a relu…" appears only after the gateway read-back confirms the change. Restoration lists what is removed and notes that consumed tokens and active exclusions are not reset; they expire on their own. The page refreshes roughly every second during a run (no inference is triggered by refresh). HTTP responses appear before Application Insights evidence; the console does not guess the backend. A disconnected console retains its last observations and labels them stale. Select a previous execution to read its own journal.
-
-The **Carte de la passerelle** visualizes the same selected execution: dashed paths describe the profile reported by the scenario event, and solid green paths appear only for backends found in native traces. The ten 80/20 call markers stay unassigned until traces identify their actual backend; ten calls are not a statistical guarantee of an 8/2 split. Token meters use response usage observed by the console, not Azure's hidden quota counters. **Rejouer** animates a saved event timeline locally and sends no traffic; **Plein écran** is intended for projection. The map shows `demo-chat` only; `demo-alt` remains available to explicit CLI qualification.
-
-### Application Insights linkage
-
-The existing workspace-based component is enabled for native OTLP using the actual portal contract, `Microsoft.Insights/components@2020-02-02-preview` and `AzureMonitorWorkspaceIngestionMode: Enabled`. Azure creates its managed DCR/DCE/Monitor workspace and publishes `DataCollectionRuleResourceId` and the three `OTLP*Endpoint` properties. The gateway still uses its native `OpenTelemetry` exporter, managed identity, `https://monitor.azure.com/` audience and no prompt/response payload capture. Workbook queries continue against the same Log Analytics workspace, using the actual Insights component scope and native server hostname because this managed DCR does not enrich `cloud.resource_id`.
-
-The portal distinguishes an Insights integration from a custom exporter by resolving the endpoint's immutable DCR ID and finding the component whose `DataCollectionRuleResourceId` points back to it. Merely enriching a manual DCR with an Insights reference is insufficient.
-
-Live acceptance on the dedicated deployment found exactly one matching component through the portal-equivalent Resource Graph query and verified four fresh A/B baseline requests: both backends, HTTP 200, 17 tokens each, estimated USD 0.000066 each. The native verifier passed. This is data/control-plane evidence; the minimized portal browser did not permit a verified visual observation of the banner.
-
-**Required IaC exception:** Azure's managed monitoring group denies `Microsoft.Resources/deployments/write` but explicitly permits direct role-assignment writes. Therefore its Monitoring Metrics Publisher grant cannot be deployed through a nested Bicep module in that group. `deploy.ps1` verifies the component/DCR cross-reference and subscription, then idempotently reads/creates/verifies the exact-DCR role using ARM `2022-04-01`. It neither modifies the deny assignment nor grants a broader role. All other monitoring resources remain in Bicep. The previous manual OTLP resources are retained to avoid destructive migration; only the Insights-linked exporter receives new traffic.
-
-Deleting the dedicated demo group also deletes its Insights component. Its additional provider-managed monitoring group is outside the cleanup allowlist; do not force-delete it or remove its deny assignment. Check the provider-managed lifecycle after component deletion and investigate any retained resources through the supported Azure resource lifecycle.
-
-Use PowerShell 7.4+, Azure CLI and an existing Bicep installation. The deployment operator needs resource creation permissions and role-assignment write permissions. A reader alone cannot deploy. Telemetry inspection also requires Log Analytics query access and Monitoring Data Reader on the Azure Monitor workspace; these are separate from gateway inference roles.
-
-Copy `config\demo.example.json` to `config\demo.local.json`. Fill every placeholder with an authorized, explicit choice:
-
-- Subscription ID, a new dedicated `rg-aigw-demo-*` group and globally unique gateway name.
-- Gateway region/SKU, model name/version/deployment/SKU/capacity and monitoring region.
-- Two distinct **service-principal object IDs**, not client/application IDs or personal user identities.
-- Verified maximum input/output USD per million tokens across both backends, source/date, and a conservative per-run estimate ceiling.
-
-The zero example prices intentionally block traffic. The model must support nonstreaming OpenAI v1 Chat Completions and `max_completion_tokens`. Both deployments use the same selected model/version. Defaults in the older backend module are not availability assertions; the gateway entrypoint supplies explicit model settings.
-
-Alternatively, set `"provisionDemoCallers": true` and remove `teamAObjectId`/`teamBObjectId` from the local configuration. Bicep then creates two dedicated user-assigned managed identities in the demo group; their resolved object IDs come from verified deployment outputs. Combining this opt-in with external caller IDs is refused.
+PowerShell 7.4+, Azure CLI/Bicep et droits de déploiement/RBAC sont nécessaires.
+La cible doit être une souscription explicitement autorisée et un groupe dédié
+`rg-aigw-demo-*` avec les marqueurs de propriété attendus. Ne pas changer le
+contexte d'un CLI partagé. Aucune disponibilité région/modèle/SKU n'est présumée.
+`GlobalStandard` ne garantit pas la résidence régionale.
 
 ```powershell
 Copy-Item .\config\demo.example.json .\config\demo.local.json
-# Edit the ignored local file before continuing.
+# Renseigner la cible, le modèle, la capacité et des prix maximum vérifiés.
 .\scripts\preflight.ps1 -ConfigPath .\config\demo.local.json -Offline
 .\tests\local.tests.ps1
-```
-
-Do not run live commands until the subscription is authorized. The scripts do not run `az account set` or create directory applications. Do not reuse another person's environment. Ownership tags include this gateway's name; existing groups without matching markers are refused.
-
-Use the same region twice unless **both** regional availability and quota have been verified. Two endpoints in one region demonstrate endpoint resilience, not regional disaster recovery. `GlobalStandard` can process outside the resource region.
-
-## 2. Discover, validate and deploy
-
-```powershell
-# Read-only subscription/provider/model/SKU/quota discovery:
-.\scripts\preflight.ps1 -ConfigPath .\config\demo.local.json
-# Mandatory ARM validate and what-if, no resource creation:
+python -m unittest discover -s .\tests -p 'test_console*.py'
 .\scripts\deploy.ps1 -ConfigPath .\config\demo.local.json
-# Review the changes, then explicitly provision:
 .\scripts\deploy.ps1 -ConfigPath .\config\demo.local.json -Apply
+.\scripts\deploy-console.ps1 -ConfigPath .\config\demo.local.json
 ```
 
-Preflight refuses missing provider registration, unsupported advertised API/region/model/SKU and insufficient or unresolvable quota. It does not reserve capacity. ARM validation is still required to check gateway SKU acceptance, monitoring-region availability, account eligibility and template expressions.
+`deploy.ps1` fait préflight, compilation, ARM validate et what-if avant création.
+Certaines attributions RBAC à ID dynamique peuvent être non analysables par
+what-if ; ne pas appeler cela un no-op. Bicep est la source des alias/policies ;
+les JSON versionnés sont chargés par Bicep et relus par les scripts.
+`configure.ps1` et `reset-demo.ps1` sont maintenant des vérifications en lecture
+seule, pas des commandes de mutation.
 
-Bicep creates the group, two Foundry accounts/projects/model deployments, system-assigned gateway identity, providers/models/aliases, RBAC, Log Analytics, Azure Monitor workspace, Application Insights, DCE/DCR, OTLP exporter and Workbook. An optional monthly resource-group Cost Management budget is enabled only with `budgetEmails`; it is an asynchronous alert, not an enforcement mechanism.
+Le rôle opérateur console est désormais **lecture seule** sur la configuration
+gateway ; il n'a ni IAM ni droit d'inférence. Les identités A/B font l'inférence.
+La console possède aussi lecture du groupe et de la télémétrie et AcrPull sur son
+registre dédié. Les images sont construites par ACR et déployées par digest.
+Un déploiement met d'abord l'ancienne console en maintenance et refuse un job actif.
 
-The gateway receives Cognitive Services OpenAI User on the two backend accounts. A/B receive AI Gateway Models User on the **two aliases only**, not on the raw registered models or Foundry accounts. Test with otherwise unprivileged workloads: inherited grants can permit bypass outside this demo's boundary.
+Easy Auth est amorcé derrière une IPv4 /32 ; cette restriction n'est retirée
+qu'après relecture de l'auth Entra et de son allowlist exacte. Le secret de
+connexion de 30 jours est un paramètre Bicep sécurisé, jamais un token navigateur
+ni une variable de conteneur. Le script réutilise un secret courant ou le renouvelle
+à deux jours de l'expiration. Le déployeur doit pouvoir créer et posséder
+l'inscription Entra dédiée. Ses identifiants non secrets restent dans le JSON local
+ignoré par Git. Ne jamais journaliser de jeton ou de secret.
 
-Configuration profiles use the stable `2026-11-01` API. Workspace policy changes use PATCH because the default workspace is service-created. The two demo-owned aliases use replacement PUT so resetting can remove the optional attempt budget: the live service rejects even an explicit zero budget without failure actions. Every write reads the HTTP ETag, supplies `If-Match`, and waits for matching read-back. Concurrent edits or missing ETags cause failure, not wildcard overwrites. Read-back is control-plane evidence, not proof of data-plane convergence.
-
-The qualified service omits submitted policy IDs from GET responses. Ownership is therefore checked against the exact versioned policy configuration, not an absent ID marker; unknown allowances are refused. The ownership check and PATCH use the same ETag snapshot.
-
-## 3. Authenticate two workloads
-
-Provide two short-lived Entra tokens in the runner process environment, `DEMO_TEAM_A_TOKEN` and `DEMO_TEAM_B_TOKEN`. Acquire them using each existing workload's approved authentication mechanism. For a CLI already authenticated **as the intended workload**, capture rather than print the token:
+### Recette HTTPS sans exposer de jeton
 
 ```powershell
-# Run in an authorized workload context; do not switch a shared CLI context.
-$token = az account get-access-token --subscription '<explicit-subscription-id>' `
-    --resource 'https://ai.gateway.azure.com' --query accessToken --output tsv
-if ($LASTEXITCODE -ne 0) { throw 'Workload token acquisition failed.' }
-# Set DEMO_TEAM_A_TOKEN or DEMO_TEAM_B_TOKEN in the runner process via your approved secret channel.
-# Never persist $token in JSON, transcripts, screenshots, command arguments or Git.
+az containerapp exec --subscription '<subscription-id>' --resource-group '<demo-group>' `
+  --name '<gateway-name>-console' --command 'python3 /app/console/operate.py accept'
 ```
 
-Application/managed-identity scope: `https://ai.gateway.azure.com/.default`. Delegated scope: `https://ai.gateway.azure.com/Data.All` (not used by this workload demo). No subscription key is necessary. The module checks `oid`, audience and expiry locally to catch mix-ups; this is **not signature verification**. The gateway must validate the token and RBAC. Refresh tokens before long runs; a token valid for two minutes is not guaranteed to cover every bounded run.
+Le helper utilise en mémoire l'identité managée opérateur et appelle réellement
+l'origine HTTPS publique. Il vérifie anonyme/non-autorisé/CSRF/concurrence, puis
+les six scénarios et la vérification finale. Les preuves sans secrets sont écrites
+dans `/tmp/console-acceptance.json`. Exiger `CONSOLE_ACCEPTANCE_VERIFIED` :
+un code de sortie zéro du tunnel exec ne prouve pas le succès distant.
+Ne pas exécuter une recette pendant une présentation.
 
-### Optional Azure-hosted managed callers
-
-For provisioned demo identities, a small ACI runner can acquire A/B tokens without secrets or local account switching:
+Pour le CLI, fournir les tokens A/B via les variables d'environnement du processus
+`DEMO_TEAM_A_TOKEN` et `DEMO_TEAM_B_TOKEN`, audience `https://ai.gateway.azure.com`.
+Ne jamais les mettre dans des arguments, fichiers, captures ou logs.
+L'ACI optionnel peut acquérir les identités dédiées sans secrets :
 
 ```powershell
-.\scripts\deploy-runner.ps1 -ConfigPath .\config\demo.local.json
-.\scripts\deploy-runner.ps1 -ConfigPath .\config\demo.local.json -Apply
 .\scripts\run-with-managed-callers.ps1 -ConfigPath .\config\demo.local.json -Scenario baseline
-# Correct-audience direct Foundry access must be denied for both callers:
-.\scripts\run-with-managed-callers.ps1 -ConfigPath .\config\demo.local.json -Scenario access-isolation
-```
-
-The digest-pinned Microsoft Azure CLI container has no public ingress. Its two identities have only the same alias permissions as external callers. The wrapper uses authenticated ARM exec and ACI's documented IMDS endpoint, checks credential resource/lifetime metadata and any returned client ID, keeps credentials in process memory, restores existing environment values afterward, and invokes the bounded PowerShell scenario runner locally. It is not a request proxy, retry engine or native gateway feature.
-
-The access-isolation check requests Cognitive Services tokens explicitly for each identity, rather than reusing wrong-audience gateway tokens. It requires the native `PermissionDenied` code, not just any 401/403, from both Foundry deployments. Foundry access tokens are treated as opaque; they need not have a client-readable JWT payload. Four such HTTP 401 denials were observed on the qualified target. This does not independently qualify a direct registered-model runtime route: an experimental provider-qualified model name returned 404 and was not counted as RBAC proof.
-
-Compute automatically exits after four hours. Stop it explicitly when checks are complete (substitute the actual explicit subscription/group/name):
-
-```powershell
-az container stop --subscription '<subscription-id>' --resource-group '<demo-group>' --name '<gateway-name>-runner'
-```
-
-Restart with `az container start` for another session if needed. The optional runner and provisioned demo identities are included in dedicated-group cleanup; external directory identities are never deleted.
-
-## 4. Run and verify
-
-```powershell
-.\scripts\run-scenario.ps1 -ConfigPath .\config\demo.local.json -Scenario baseline
-# Copy the actual result path printed by the runner, not this placeholder.
+.\scripts\run-scenario.ps1 -ConfigPath .\config\demo.local.json -Scenario identity-routing
 .\scripts\verify-results.ps1 -ConfigPath .\config\demo.local.json -ResultsPath '.\.demo\<run-id>.json'
 ```
 
-Baseline sends two real requests: A and B through `demo-chat` (backend 1). The `demo-alt` alias (backend 2 first) stays deployed but is hidden from the workshop; add `-IncludeAlternateAlias` to any CLI scenario to restore its calls (four baseline requests on both backends, secondary failover checks, and the cross-alias quota checks). The gateway hostname and common advertised Chat Completions path are read from ARM, not guessed. Completion bodies are discarded; HTTP status, token usage, error code, timing and trace ID are saved locally.
+Arrêter explicitement l'ACI après usage. Les anciens switches d'alias alternatif
+et de panne temporaire sont refusés ; tous les scénarios courants sont mono-alias.
 
-The terminal shows immediate HTTP observations. **Only successful native verification produces `<run-id>.verified.json`.** Verification joins OTelSpans/OTelLogs by the client W3C trace ID, checks authenticated identities/status and serving backend, and rejects incomplete or ambiguous evidence. Allow ingestion delay, then rerun the verifier without generating more traffic. Queries cover the last hour. Missing traces or attributes are inconclusive, never success.
+## Application Insights et Workbook
 
-Run one scenario at a time; the workspace configuration is shared. Each run restores baseline configuration in `finally`. A failed restoration remains an explicit error and is recorded in the run file.
+### Surveiller les applications appelantes ACA
 
-| Scenario | Command suffix | Required native evidence |
-|---|---|---|
-| Stable aliases | `-Scenario baseline` | Backend 1 serves `demo-chat` for A/B. With `-IncludeAlternateAlias`, backend 2 also serves `demo-alt`. |
-| Weighted routing | `-Scenario weighted-routing -Samples 100` | 50-200 successful requests; backend 1 fraction within four binomial standard deviations of 0.8. Not an exact 80/20 promise. |
-| Failover/recovery | `-Scenario failover` | Healthy primary, two backend sends on failover, one send for B while excluded, visible all-down error, primary restored for A and B. `-IncludeAlternateAlias` adds the `demo-alt` secondary checks. |
-| Token rate | `-Scenario token-rate` | A rejected repeatedly while B continues; rejection attributed to `tokenLimit`. `-IncludeAlternateAlias` also proves that switching to `demo-alt` does not bypass the allowance. |
-| Cumulative tokens | `-Scenario token-quota` | Same checks with an hourly token allowance. It is not a lifetime token quota. |
-| Estimated spend | `-Scenario cost-limit -BaselineEvidencePath '.\.demo\<baseline-id>.verified.json'` | Fresh priced baseline on both backends (run that baseline with `-IncludeAlternateAlias`); native metrics explicitly `price_missing=false`; A cost rejection attributed to `costLimit` while B continues. |
+Le vrai émetteur des appels de cette console est le `HttpClient` PowerShell de
+`console-worker.ps1` / `run-scenario.ps1`, exécuté **dans la Container App**.
+Le runner ACI n'est pas utilisé par la console. Chaque appel produit un span
+OpenTelemetry **Client** mesuré au point d'envoi : mêmes `traceId` et `spanId`
+que le `traceparent` réellement transmis, statut HTTP et durée observés.
+Il n'y a pas de requête serveur ni de backend inventé pour dessiner une carte.
 
-Use the same `run-scenario.ps1` prefix with `-ConfigPath` for each suffix, then verify its actual saved result path. Token scenarios add synthetic input markers to A's request only: 640 for the minute test and 160 for the hourly test, within the qualified model's 1,024-token input estimate. B keeps the short control prompt. Request ceilings never increase automatically. The larger minute input leaves time to demonstrate B continuing between A rejections under conservative backend pacing; the shorter input recovered before the alternate-alias probe and was not certified.
-
-Governance is per authenticated identity at **workspace** scope, shared across both aliases/backends. It is not a pooled team allowance. The cost profile renders an `oid` override for A (USD 0.0001/hour) with a larger independent B/default allowance (USD 0.1/hour). These are estimates, not exact billing.
-
-An exhausted identity can remain exhausted after reconfiguration. Start with fresh authorized workloads or wait for the applicable renewal. The minute test aligns its start to a UTC minute to reduce timing variation, but this is not proof of calendar-window enforcement: the service admitted a later request within that same minute in an earlier short-load test. Rejection continuity can therefore become inconclusive before a wall-clock boundary. The runner does not fake a reset or characterize an unmeasured refill algorithm.
-
-Token allowances are not strict hard ceilings. The verified hourly run accepted three 184-token A completions (552 tokens) before rejecting further A calls with the configured 256-token allowance, even with one request in flight. The verified minute run accepted one 664-token A completion, then returned native `tokenLimit` HTTP 429 on both aliases while B continued. Native accounting/admission timing can overshoot; do not promise that accepted usage stays below the configured count.
-
-### Cost safety
-
-Cost-limit refuses traffic without a native-verified baseline from the same gateway with nonzero per-response costs on both serving backends in the last ten minutes. It also queries unaggregated native cost metric series for both aliases with complete pricing flags; missing/zero/incomplete metrics stop the scenario. It does not infer price completeness from positive costs alone.
-
-The runner limits calls (at most 12 governance, 8 failover, 10 browser routing or 200 CLI routing), completion tokens (64), one request in flight and **zero client retries**. It reads the actual deployment request/token limits and enforces monotonic minimum start-to-start spacing for the maximum input and attempt bounds, rather than adding a full delay after a slow response. During the original qualification, capacity 10 permitted only 10 requests/minute per backend; an unpaced routing test hit a real upstream 429. The short workshop configuration now provides 40 requests/minute and 40,000 tokens/minute per backend. Its conservative model-token estimate includes 1,024 input tokens per backend attempt and both possible failover sends, using the supplied maximum prices. It excludes gateway/monitoring/fixed charges and is not a financial guarantee.
-
-Native cost policies check recorded spend before admission and charge after completion; in-flight work can overshoot. Missing native prices can fail open. UTC calendar boundaries renew cost allowances. Never describe this as an exact invoice or strict hard budget.
-
-### Fault demonstration
-
-The failover runner temporarily maps a registered model to `/demo-injected-unavailable`, expecting an upstream 404. The special 404 rule is **laboratory configuration only**. Native failure rules also cover null responses and 408/429/500/502/503/504, but real network timeouts, regional outages and throttling have not been tested.
-
-No injector service is deployed. The runner performs no client retry or backend selection. It restores the exact original explicit endpoint mappings, waits 35 seconds for the configured 30-second exclusion, then requests recovery. Propagation may take longer; a failed check must remain visible rather than being presented as success.
-
-## 5. Show the Workbook
-
-Open the deployed Log Analytics resource's Workbook named **AI Gateway - teams A/B**. Its three views show native request health/latency (p50/p95), backend/token/estimated-cost usage with missing-record counts, and trace-level correlation.
-
-The KQL is versioned in `observability\requests.kql`. It uses real OTelSpans/OTelLogs fields, not classic APIM tables. The deployed service emits workspace-relative backend names (`backend-1/demo-model`, `backend-2/demo-model`) and preserves incoming W3C trace IDs. Scripted queries use JSON-file REST transport to preserve multiline KQL on Windows. An absent policy error span means rejection attribution remains unknown. Do not replace missing native evidence with client-side labels.
-
-Telemetry is delayed and may be capped/dropped: the Log Analytics daily cap is 1 GB and retention 30 days. No remaining quota is invented. Payload capture is disabled. A/B labels correspond to workload object IDs, not customer data.
-
-## 6. Reset and cleanup
+Après la fin du sous-processus, Python exporte ces spans via le SDK Azure Monitor
+vers le composant Insights existant. `service.name` distingue les applications
+A et B de cette même ACA ; ce ne sont pas deux déploiements supplémentaires.
+Les dépendances arrivent dans `AppDependencies` (`dependencies` en requête
+Application Insights), tandis que la gateway conserve ses `OTelSpans` natifs.
+`observability/caller-map.kql` joint `OperationId` à `TraceId` et compare
+l'ID du span client au `ParentSpanId` de la gateway. La certification de scénario
+reste exclusivement fondée sur les traces natives gateway, pas sur ces spans clients.
 
 ```powershell
-# Repair recognized lab endpoint faults and restore baseline routing/policies:
+.\scripts\enable-console-monitoring.ps1 -ConfigPath .\config\demo.local.json
+```
+
+Le module Bicep `console-monitoring.bicep` accorde à l'identité opérateur seulement
+**Monitoring Metrics Publisher sur le composant Insights**. Le SDK utilise
+`ManagedIdentityCredential` avec cette identité. La connection string est une
+app setting obtenue d'ARM / sortie Bicep sécurisée ; `DisableLocalAuth=true`
+reste actif, donc la clé d'instrumentation ne permet pas une ingestion anonyme.
+Aucun droit sur les alias n'est modifié.
+
+Le groupe managé contenant le DCR natif refuse les ressources de déploiement
+par deny assignment. Cette protection reste intacte : le SDK officiel Azure Monitor
+utilise le composant Insights, sans déployer dans ce groupe ni modifier son DCR.
+Les spans excluent jetons, claims personnels, prompts et réponses. Un échec
+d'export est explicite et ne devient pas un succès ; aucun retry d'inférence
+n'est ajouté. L'export et le rafraîchissement de l'Application Map sont différés.
+
+Recette HTTPS observée sur la révision `0000021` : dix réponses 200, A 5/5
+sur Backend 1 et B 5/5 sur Backend 2, zéro retry client. Les dix dépendances
+ACA ingérées ont exactement le même `OperationId` que les traces gateway
+et le même ID que leur `ParentSpanId`. Les sept alias, corps et ETags,
+sont inchangés. Preuves locales ignorées par Git :
+`.demo\map-identity-acceptance.json`, `.demo\map-correlation.kql`,
+`.demo\map-correlation.json`, `.demo\map-revision-health.json`,
+`.demo\map-aliases-before.json` et `.demo\map-aliases-after.json`.
+L'apparition des nœuds dans le rendu visuel de l'Application Map n'a pas
+été observée : la corrélation KQL ne suffit pas à certifier ce rendu.
+
+L'intégration native est activée sur le composant workspace-based existant via
+`AzureMonitorWorkspaceIngestionMode: Enabled` (API `2020-02-02-preview`).
+Le composant publie son DCR et ses endpoints OTLP. La passerelle utilise
+l'exporteur OpenTelemetry à identité managée, audience `https://monitor.azure.com/`,
+sans capturer prompts/réponses.
+
+Le lien composant/DCR a été vérifié par la requête Resource Graph équivalente à
+celle du portail, et des requêtes A/B ont été retrouvées dans ses logs/traces
+natifs. **La disparition visuelle de la bannière du portail n'a pas été observée.**
+Les anciens DCR manuels sont conservés sans recevoir le nouveau trafic.
+
+Exception IaC : le groupe de monitoring géré par Azure refuse les déploiements
+imbriqués, mais autorise l'attribution directe de rôle. `deploy.ps1` vérifie le lien
+exact composant/DCR et donne idempotemment Monitoring Metrics Publisher sur ce
+DCR seulement (ARM `2022-04-01`), sans toucher à la deny assignment.
+
+Le Workbook **AI Gateway - teams A/B** et `observability\requests.kql` utilisent
+`OTelSpans`/`OTelLogs`, la composante Insights et le hostname exact.
+Ils montrent succès/rejets, origine de stratégie, latence p50/p95, backend, tokens,
+coût estimé et trace ID. Une attribution native `tokenLimit` est obligatoire pour
+certifier un rejet de gouvernance ; le seul statut HTTP ne suffit pas.
+Ingestion retardée de plusieurs minutes, rétention 30 jours et plafond LAW 1 Go/jour.
+Aucune métrique de quota restant n'est inventée.
+
+## Nettoyer
+
+```powershell
 .\scripts\reset-demo.ps1 -ConfigPath .\config\demo.local.json
-# Preview exact dedicated-group cleanup:
 .\scripts\cleanup.ps1 -ConfigPath .\config\demo.local.json -WhatIf
-# Confirm the built-in high-impact prompt, or use -Confirm:$false deliberately:
 .\scripts\cleanup.ps1 -ConfigPath .\config\demo.local.json
 Remove-Item Env:\DEMO_TEAM_A_TOKEN, Env:\DEMO_TEAM_B_TOKEN -ErrorAction SilentlyContinue
 ```
 
-Reset does not erase counters, cancel in-flight calls or immediately expire native exclusions. Wait for renewal/exclusion before repeating. Interrupted processes may not execute `finally`; reset repairs only recognized demo mappings and refuses unknown configurations.
+Le nettoyage vérifie les marqueurs et une allowlist exacte du groupe dédié,
+y compris l'alerte Failure Anomalies exclusivement liée à son composant.
+Ne jamais élargir la suppression à un groupe partagé ou au groupe monitoring
+géré par Azure ; vérifier son cycle de vie après suppression du composant.
+Les identités externes ne sont pas supprimées. Supprimer l'inscription Entra
+console uniquement après vérification de son object ID, appId, nom et propriétaire
+à partir des valeurs locales ; aucun delete par nom ambigu.
 
-Cleanup checks subscription deployment outputs, group ownership markers and an exact resource allowlist. Application Insights can automatically create a Failure Anomalies alert; cleanup accepts only its exact expected name, detector and exclusive link to this demo's component. It refuses groups with foreign resources or alerts targeting other components, then waits for group deletion. Inspect unexpected resources manually; never broaden deletion to a subscription or shared group. External directory identities are not deleted. Subscription deployment history and provider-managed soft-delete retention can remain after resource-group deletion.
+## Preuves et limites
 
-After workshop cleanup, inspect the registration named `<gateway-name>-console` using `consoleAuthApplicationObjectId` in the ignored local configuration. Verify its object ID, `appId` against `consoleAuthClientId`, display name and ownership, then remove that exact application with `az ad app delete --id '<verified-application-object-id>'`. This also retires its browser-login credentials; do not delete any other application by name alone. Rotated credentials expire after 30 days; remove superseded `console-easy-auth` credentials only after confirming the deployed login and recorded current key ID.
+### Recette réelle des alias fixes
 
-## Remaining live acceptance
+Les sept alias et les quatorze attributions Models User A/B ont été relus après
+déploiement. La campagne utilise réellement l'API HTTPS protégée et les identités
+managées A/B, pas une simulation des réponses.
 
-Preflight, ARM validation/what-if, infrastructure deployment and a final deployment replay succeeded. A fresh post-replay baseline was natively verified with the same hostname; baseline reapplications preserved the workspace and both alias ETags. Weighted/failover/minute/hourly acceptance, direct Foundry permission-denial checks, all three deployed Workbook queries and cleanup preview also succeeded. The optional ACI runner was explicitly stopped and its `Stopped` state read back; the gateway, backends and monitoring remain deployed.
+| Alias | Résultat HTTP et natif observé |
+|---|---|
+| `demo-chat` | A 1/1 et B 1/1 HTTP 200, Backend 1. |
+| `scenario-weighted-80-20` | Dix HTTP 200 ; Backend 1 : 8, Backend 2 : 2. Ce petit échantillon ne certifie pas statistiquement les poids. |
+| `scenario-failover` | Quatre HTTP 200 sur Backend 2 ; chaque trace montre tentative 1 du modèle dédié en erreur 404, puis tentative 2 réussie. |
+| `scenario-token-rate` | A : un succès puis deux rejets 429 natifs `tokenLimit` ; B : deux succès 200. |
+| `scenario-token-quota` | A : deux succès puis deux rejets 403 natifs `tokenLimit` ; B : deux succès 200. |
+| `scenario-identity` | A 5/5 sur Backend 1, B 5/5 sur Backend 2 ; dix HTTP 200 et une seule tentative chacun. |
 
-What-if could not analyze some dynamically resolved role-assignment IDs; the actual replay succeeded. Resource-group deletion was not performed merely to demonstrate cleanup. Two-region resilience, real network timeouts and the raw registered-model authorization route remain unqualified. There are no presentation screenshots or fallback captures.
+Preuves locales ignorées par Git : `.demo\fixed-initial-jobs.json`,
+`.demo\fixed-failover-attempts.json` et `.demo\fixed-identity-verified.json`.
+Les sept corps ARM complets et leurs ETags sont identiques dans
+`.demo\fixed-aliases-before.json` et `.demo\fixed-aliases-after-initial.json`,
+y compris `demo-chat`. Le runner ACI est resté arrêté.
+La première certification de l'identité a été refusée : les dix spans étaient
+arrivés, mais deux logs d'alias manquaient encore. La relecture stricte ultérieure
+des **mêmes appels**, sans réémission, a passé les assertions. La console attend
+désormais aussi les champs issus des jointures de logs et de stratégies avant de
+certifier ; une valeur contradictoire présente reste un échec, pas une donnée ignorée.
 
-The actual native aggregate cost series reports `azure.ai_gateway.price_missing="true"` despite nonzero response-cost estimates. The cost guard deliberately refuses enforcement traffic under this condition; positive costs alone do not prove complete pricing. Do not remove the guard or present estimated costs as a certified hard cap.
+Le correctif est déployé dans la révision prête `0000016`. Sa nouvelle recette
+identité HTTPS a passé : dix HTTP 200, A 5/5 Backend 1 et B 5/5 Backend 2,
+une tentative chacun, zéro retry client, Entra/CSRF/concurrence protégés.
+Preuves : `.demo\fixed-final-identity-acceptance.json` et l'agrégat
+`.demo\fixed-console-acceptance.json` (cinq scénarios de la révision `0000015`,
+identité de la révision `0000016`, provenance explicitée).
+Les snapshots finaux `.demo\fixed-baseline-after.json` et
+`.demo\fixed-aliases-after.json` restent strictement identiques aux snapshots avant
+recette, corps complets et ETags inclus. Le test Chromium de nettoyage DOM est
+local et synthétique ; aucune observation visuelle du portail n'est revendiquée.
+
+Les tests locaux sont synthétiques, pas des résultats Azure. Le test Chromium DOM
+prouve l'effacement au clic Start avant chargement du nouveau job, puis l'absence
+de preuves/cadenas hérités ; il utilise une API synthétique.
+Les preuves historiques incluent `.demo\identity-console-acceptance.json`
+(A 5/5 Backend 1, B 5/5 Backend 2) et le contrôle négatif cité plus haut.
+Elles concernent l'ancienne configuration dynamique, pas les nouveaux alias fixes.
+
+La recette de migration doit fournir un JSON HTTPS avec les traces natives pour
+chaque alias, les snapshots intégraux/ETags de `demo-chat` avant/après, et le résultat
+du test DOM. La matrice [capabilities](capabilities.md) distingue les contrats
+publics des comportements observés. Pas de preuve de suppression effective,
+de résilience régionale, de panne réseau réelle ou de limite monétaire certifiée.

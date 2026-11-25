@@ -30,6 +30,12 @@ Assert-True (Test-DemoSubset @{policies=@(@{id='demo-test';type='tokenLimit';cou
 Assert-True (-not (Test-DemoSubset @{policies=@(@{id='demo-test';type='tokenLimit';count=256})} @{policies=@(@{type='tokenLimit';count=257})})) 'An omitted policy ID must not hide a changed allowance.'
 Assert-True (-not (Test-DemoSubset @{ backends=@('a','b') } @{ backends=@('b','a') })) 'Routing order is significant.'
 Assert-True (-not (Test-DemoSubset @{ count=10 } @{ count=11 })) 'Changed allowance must be detected.'
+Assert-True (-not (Test-DemoSubset @{resourceId='backend';priority=0;weight=1} `
+    @{resourceId='backend';priority=0;weight=1;when='@cel(false)'})) `
+    'Baseline restoration must not mistake a leftover backend condition for an idempotent no-op.'
+Assert-True (Test-DemoSubset @{resourceId='backend';priority=0;weight=1} `
+    @{resourceId='backend';priority=0;weight=1;when='';provisioningState='Succeeded'}) `
+    'An empty optional backend condition and provider metadata must not force a write.'
 Assert-Throws {Assert-DemoWeightedDistribution 50 50} 'The small-sample tolerance must not certify traffic served by only one backend.'
 Assert-Throws {Assert-DemoWeightedDistribution 10 100} 'A materially incorrect routing distribution must be refused.'
 Assert-True ((Assert-DemoWeightedDistribution 80 100) -gt 0) 'A representative 80/20 distribution should pass.'
@@ -172,7 +178,9 @@ Assert-Throws {
 
 & $module {
     function script:Assert-DemoGroup {}
-    function script:Get-DemoArm { param($Id); return @{properties=@{policies=@();supportedEndpoints=@('v1/chat/completions');gatewayEndpoints=@(@{
+    function script:Get-DemoArm { param($Id)
+        if ($script:ProfileWrites.ContainsKey($Id)) { return @{properties=$script:ProfileWrites[$Id]} }
+        return @{properties=@{policies=@();supportedEndpoints=@('v1/chat/completions');gatewayEndpoints=@(@{
         api='v1/chat/completions';url='https://assigned.example.test/default/models/openai/v1/chat/completions'
     })}} }
     function script:Get-DemoArmEnvelope { param($Id); return @{body=(Get-DemoArm $Id);etag='"revision-1"'} }
@@ -180,23 +188,32 @@ Assert-Throws {
     $script:ProfileMethods=@{}
     function script:Set-DemoArmProperties { param($Id,$Properties,$Method,$Current); $script:ProfileWrites[$Id]=$Properties; $script:ProfileMethods[$Id]=$Method }
     $config=@{subscriptionId='s';resourceGroupName='r';gatewayName='g';teamAObjectId='a'}
-    Set-DemoProfile $config token-rate
+    $script:FixedExpected=Get-DemoScenarioProperties $config token-rate
     $ids=Get-DemoIds $config
-    $policy=$script:ProfileWrites[$ids.workspace].policies[0]
-    if ($policy.scope -ne 'workspace' -or $policy.counterKey.Count -ne 1 -or $policy.counterKey[0] -ne 'identity') {
-        throw 'Allowance must share a workspace counter keyed only by authenticated identity.'
+    $policy=$script:FixedExpected.policies[0]
+    if ($policy.scope -ne 'resource' -or $policy.counterKey.Count -ne 1 -or $policy.counterKey[0] -ne 'identity') {
+        throw 'Allowance must use an alias-local counter keyed only by authenticated identity.'
     }
-    if ($script:ProfileWrites["$($ids.workspace)/aliases/demo-alt"].backendModels[0].priority -ne 1) {
-        throw 'The alternate alias must prove non-bypass through the other preferred backend.'
+    function script:Get-DemoArm { param($Id)
+        if($Id.EndsWith('/aliases/scenario-token-rate')){ return @{properties=$script:FixedExpected} }
+        return @{properties=@{policies=@()}}
     }
-    if ($script:ProfileWrites["$($ids.workspace)/aliases/demo-chat"].ContainsKey('maxRetryAttempts') -or
-        $script:ProfileMethods["$($ids.workspace)/aliases/demo-chat"] -ne 'put') {
-        throw 'Disabled failure actions must omit the attempt budget and replace the old alias configuration.'
+    if ((Assert-DemoFixedScenario $config token-rate) -ne 'scenario-token-rate' -or $script:ProfileWrites.Count) {
+        throw 'Checking the fixed scenario must never write configuration.'
     }
-    Set-DemoProfile $config cost-limit
-    if ($script:ProfileWrites[$ids.workspace].policies[0].overrides[0].claims[0].value -ne 'a') {
-        throw 'Cost override must select the configured authenticated A identity, not a caller header.'
+    $script:FixedExpected.policies[0].scope='workspace'
+    $refused=$false
+    try { Assert-DemoFixedScenario $config token-rate } catch { $refused=$_.Exception.Message -like 'Fixed alias*differs*' }
+    if(-not $refused){throw 'A workspace-scoped allowance must not pass fixed alias verification.'}
+    $fault=Get-DemoScenarioProperties $config failover
+    if($fault.backendModels[0].resourceId -notlike '*/backend-fault/models/demo-unavailable' -or
+        $fault.backendModels[1].resourceId -notlike '*/backend-2/models/demo-model' -or
+        $fault.failures[0].ContainsKey('excludeFor')){
+        throw 'Failover needs its own permanently bad model and no shared exclusion state.'
     }
+    function script:Get-DemoArm { return @{properties=@{gatewayEndpoints=@(@{
+        api='v1/chat/completions';url='https://assigned.example.test/default/models/openai/v1/chat/completions'
+    })}} }
     $endpoint=Get-DemoRuntimeEndpoint @{workspaceId='/synthetic';hostname='assigned.example.test'}
     if ($endpoint -ne 'https://assigned.example.test/default/models/openai/v1/chat/completions') {
         throw 'Runtime must use the alias-advertised endpoint and service-assigned hostname.'
@@ -212,20 +229,157 @@ Assert-Throws {
     try { Get-DemoRuntimeEndpoint @{workspaceId='/synthetic';hostname='assigned.example.test'} }
     catch { $refused=$_.Exception.Message -like 'Both aliases must advertise*' }
     if(-not $refused){throw 'An unadvertised first alias must not inherit the second alias endpoint.'}
-    function script:Get-DemoArm { return @{properties=@{endpoints=@(@{api='v1/chat/completions';path='/demo-injected-unavailable'})}} }
-    Reset-DemoLabFaults @{workspaceId='/synthetic'}
-    foreach($backend in @(1,2)){
-        if($script:ProfileWrites["/synthetic/modelProviders/backend-$backend/models/demo-model"].endpoints[0].path -ne '/openai/v1/chat/completions'){
-            throw 'Reset must repair recognized lab faults on both backends.'
+}
+$script:Checks += 6
+Assert-Throws { Set-DemoProfile @{} baseline } 'Legacy profile switching must refuse all writes.' 'retired'
+Assert-Throws { Reset-DemoLabFaults @{} } 'Legacy endpoint switching must refuse all writes.' 'retired'
+& {
+    function Import-Module {}
+    function Read-DemoConfig { return @{} }
+    function Get-DemoState { return @{gatewayId='/synthetic/gateway';projects=@{one=@{deploymentId='/model'}}} }
+    function Get-DemoIds { return @{workspace='/synthetic/workspace'} }
+    function Get-DemoToken { return 'synthetic-only' }
+    function Get-DemoRuntimeEndpoint { return 'https://synthetic.invalid' }
+    function Assert-DemoRunBudget { return 0 }
+    function Get-DemoArm { return @{properties=@{rateLimits=@(@{key='request';count=100;renewalPeriod=1})}} }
+    function Get-DemoArmEnvelope { return @{etag='"fixed"';body=@{properties=@{aliasName='demo-chat'}}} }
+    function Get-DemoProfileSummary { return @{routes=@(@{alias=$selectedAlias})} }
+    function Assert-DemoFixedScenario { return $selectedAlias }
+    function Set-DemoProfile { throw 'Unexpected runtime profile write.' }
+    function Set-DemoArmProperties { throw 'Unexpected runtime ARM write.' }
+    function Reset-DemoLabFaults { throw 'Unexpected runtime endpoint write.' }
+    function Invoke-DemoRequest {
+        param($Endpoint,$Alias,$Token,$Team,$Phase)
+        $runnerAliases.Add($Alias)
+        return @{team=$Team;alias=$Alias;phase=$Phase;completion=$true;status=200;
+            latencyMs=1;traceId=[guid]::NewGuid().ToString('N')}
+    }
+    $directory=Join-Path ([IO.Path]::GetTempPath()) "aigw-fixed-test-$([guid]::NewGuid().ToString('N'))"
+    try {
+        foreach($scenario in @('baseline','failover')) {
+            $selectedAlias=if($scenario -eq 'baseline'){'demo-chat'}else{'scenario-failover'}
+            $runnerAliases=[Collections.Generic.List[string]]::new()
+            & (Join-Path $root 'scripts\run-scenario.ps1') -ConfigPath synthetic -Scenario $scenario -OutputDirectory $directory
+            Assert-True ($runnerAliases.Count -eq $(if($scenario -eq 'baseline'){2}else{4}) -and
+                @($runnerAliases | Where-Object {$_ -cne $selectedAlias}).Count -eq 0) `
+                'Runner must call only the chosen fixed alias, without mutation or repair.'
+        }
+    } finally {
+        if(Test-Path -LiteralPath $directory){
+            foreach($file in Get-ChildItem -LiteralPath $directory -File){Remove-Item -LiteralPath $file.FullName -Force}
+            Remove-Item -LiteralPath $directory -Force
         }
     }
-    function script:Get-DemoArm { return @{properties=@{endpoints=@(@{api='v1/chat/completions';path='/foreign-route'})}} }
-    $refused=$false
-    try { Reset-DemoLabFaults @{workspaceId='/synthetic'} }
-    catch { $refused=$_.Exception.Message -like 'Unexpected model mapping*' }
-    if(-not $refused){throw 'Reset must refuse foreign endpoint mappings.'}
 }
-$script:Checks += 8
+& $module {
+    function script:Invoke-DemoAz { return 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA' }
+    $c=@{subscriptionId='s';teamAObjectId='a';teamBObjectId='BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB'}
+    $profile=Read-DemoProfile $c identity-routing
+    $routes=@(Get-DemoAliasTargets $profile identity-routing demo-chat)
+    if ($routes[0].when -cnotlike '*aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb*' -or
+        $routes[0].when -notlike '*has(authorization.identity)*' -or
+        $routes[0].when -like '*request.headers*' -or $routes[1].ContainsKey('when')) {
+        throw 'Identity routing must compare normalized validated Entra identity, not caller headers.'
+    }
+    if (@(Get-DemoAliasTargets $profile identity-routing demo-alt | Where-Object { $_.ContainsKey('when') }).Count) {
+        throw 'Identity condition must not leak to the hidden alternate alias.'
+    }
+    $c.teamBObjectId="injection' || true"
+    $refused=$false
+    try { Read-DemoProfile $c identity-routing } catch { $refused=$_.Exception.Message -like 'Identity routing requires*' }
+    if (-not $refused) { throw 'Refuse identity interpolation that is not a GUID.' }
+}
+$script:Checks += 3
+$identityRun=@{alias='scenario-identity';clientRetries=0;concurrency=1;minimumInterRequestSpacingSeconds=2;restorationFailures=@();results=@()}
+$identityRows=@()
+for ($i=0;$i -lt 10;$i++) {
+    $team=if($i%2 -eq 0){'A'}else{'B'}
+    $identityRun.results+=@{team=$team;traceId="trace$i";alias='scenario-identity';phase='identity-healthy';status=200;completion=$true}
+    $identityRows+=@{TraceId="trace$i";Backend="backend-$(if($team -eq 'A'){1}else{2})/demo-model";Attempts=1}
+}
+Assert-DemoIdentityRouting $identityRun $identityRows
+$script:Checks++
+$identityRows[1].Backend='backend-1/demo-model'
+Assert-Throws { Assert-DemoIdentityRouting $identityRun $identityRows } 'A successful B response on Backend 1 must fail identity certification.' 'violated'
+$identityRows[1].Backend='backend-2/demo-model'
+$identityRows[1].Attempts=2
+Assert-Throws { Assert-DemoIdentityRouting $identityRun $identityRows } 'Identity routing must prove exactly one backend send.' 'violated'
+$identityRows[1].Attempts=1
+$negative=$identityRun.Clone()
+$negative.identityBackendFault=$true
+$negative.results=@(
+    @{team='B';traceId='trace1';alias='scenario-identity';phase='identity-healthy';status=200;completion=$true},
+    @{team='B';traceId='down';alias='scenario-identity';phase='pinned-unavailable';status=404;completion=$false},
+    $identityRun.results[0],$identityRun.results[2]
+)
+$negativeRows=@($identityRows[1],@{TraceId='down';Backend='backend-2/demo-model';Attempts=1},$identityRows[0],$identityRows[2])
+Assert-DemoIdentityRouting $negative $negativeRows
+$script:Checks++
+$negative.results[1].status=200
+$negative.results[1].completion=$true
+Assert-Throws { Assert-DemoIdentityRouting $negative $negativeRows } 'The negative test cannot pass if B obtains a completion.' 'explicit B error'
+& {
+    function Import-Module {}
+    function Read-DemoConfig { return @{teamAObjectId='object-a';teamBObjectId='object-b'} }
+    function Get-DemoState { return @{gatewayId='/demo/gateway'} }
+    function Get-DemoRequestsQuery { return '// synthetic fixture' }
+    function Invoke-DemoQuery { return $fixtureRows }
+    $fixture=[IO.Path]::GetTempFileName()
+    $verified=[IO.Path]::ChangeExtension($fixture,'verified.json')
+    try {
+        $fixtureRun=$identityRun | ConvertTo-Json -Depth 10 | ConvertFrom-Json -AsHashtable
+        $fixtureRun.scenario='identity-routing'
+        $fixtureRun.runId='synthetic-identity'
+        $fixtureRun.gatewayId='/demo/gateway'
+        $fixtureRun.outcome='http-observed-awaiting-native-telemetry'
+        $fixtureRows=@($identityRows | ForEach-Object { $_.Clone() })
+        for ($i=0;$i -lt 10;$i++) {
+            $trace='{0:x32}' -f $i
+            $fixtureRun.results[$i].traceId=$trace
+            $fixtureRows[$i].TraceId=$trace
+            $fixtureRows[$i].Identity=if($fixtureRun.results[$i].team -eq 'A'){'object-a'}else{'object-b'}
+            $fixtureRows[$i].HttpStatus=200
+            $fixtureRows[$i].StatusCode=''
+        }
+        $fixtureRun | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $fixture
+        & (Join-Path $root 'scripts\verify-results.ps1') -ConfigPath unused -ResultsPath $fixture
+        Assert-True (Test-Path -LiteralPath $verified) 'The full verifier must certify a valid identity sample.'
+        $fixtureRows[1].Backend='backend-1/demo-model'
+        Assert-Throws {
+            & (Join-Path $root 'scripts\verify-results.ps1') -ConfigPath unused -ResultsPath $fixture
+        } 'The full verifier must execute identity-specific assertions outside weighted routing.' 'violated'
+        $fixtureRows[1].Backend='backend-2/demo-model'
+        function Read-DemoProfile { return @{alias=$fixtureRun.alias} }
+        $fixtureRun.configurationMode='fixed-alias'
+        $fixtureRun.configurationUnchanged=$true
+        $fixtureRun.baselineEtagBefore=$fixtureRun.baselineEtagAfter='"unchanged"'
+        foreach($row in $fixtureRows){$row.Alias='scenario-identity'}
+        $fixtureRun | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $fixture
+        & (Join-Path $root 'scripts\verify-results.ps1') -ConfigPath unused -ResultsPath $fixture
+        $fixtureRows[0].Alias='demo-chat'
+        Assert-Throws {
+            & (Join-Path $root 'scripts\verify-results.ps1') -ConfigPath unused -ResultsPath $fixture
+        } 'A valid response through another alias must not certify the selected model.' 'Native alias'
+        $fixtureRows[0].Alias='scenario-identity'
+        $fixtureRun.baselineEtagAfter='"changed"'
+        $fixtureRun | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $fixture
+        Assert-Throws {
+            & (Join-Path $root 'scripts\verify-results.ps1') -ConfigPath unused -ResultsPath $fixture
+        } 'Changed reference ETag must invalidate fixed-scenario evidence.' 'unchanged demo-chat'
+        $fixtureRun.baselineEtagAfter='"unchanged"'
+        $fixtureRun.scenario='token-rate'
+        $fixtureRun.alias='scenario-token-rate'
+        foreach($r in $fixtureRun.results){$r.alias=$fixtureRun.alias}
+        foreach($row in $fixtureRows){$row.Alias=$fixtureRun.alias}
+        $fixtureRun | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $fixture
+        Assert-Throws {
+            & (Join-Path $root 'scripts\verify-results.ps1') -ConfigPath unused -ResultsPath $fixture
+        } 'Governance assertions must execute outside the weighted branch.' 'A policy rejection'
+    } finally {
+        Remove-Item -LiteralPath $fixture -Force
+        if (Test-Path -LiteralPath $verified) { Remove-Item -LiteralPath $verified -Force }
+    }
+}
 & $module {
     $config=@{subscriptionId='s';resourceGroupName='r';gatewayName='g';teamAObjectId='team-a-object-id-secret'}
     $weighted=Get-DemoProfileSummary $config weighted-routing
@@ -234,13 +388,14 @@ $script:Checks += 8
         if($split -ne '1:80,2:20'){throw "Weighted summary must show an 80/20 split at equal priority on $($route.alias), got $split."}
     }
     $failover=Get-DemoProfileSummary $config failover
-    if($failover.maxRetryAttempts -ne 1 -or -not ($failover.failures | Where-Object { 404 -in $_.statusCodes -and $_.excludeSeconds -eq 30 })){
-        throw 'Failover summary must expose the attempt budget, the simulated 404 and the 30 s exclusion.'
+    if($failover.maxRetryAttempts -ne 1 -or -not ($failover.failures | Where-Object { 404 -in $_.statusCodes -and $_.excludeSeconds -eq 0 })){
+        throw 'Failover summary must expose the permanent simulated 404 with no exclusion.'
     }
     $baseline=Get-DemoProfileSummary $config baseline | ConvertTo-Json -Compress -Depth 10
     if($baseline -notlike '*"failures":`[`]*' -or $baseline -notlike '*"policies":`[`]*'){throw 'Baseline summary must serialize empty rules as arrays.'}
-    $cost=Get-DemoProfileSummary $config cost-limit | ConvertTo-Json -Compress -Depth 10
-    if($cost -like '*team-a-object-id-secret*' -or $cost -notlike '*"overrides":1*'){throw 'Browser summary must count overrides without exposing identity claims.'}
+    $refused=$false
+    try { Get-DemoProfileSummary $config cost-limit } catch { $refused=$_.Exception.Message -like '*Cost remains disabled*' }
+    if(-not $refused){throw 'Cost must not have a callable scenario alias.'}
 }
 $script:Checks += 4
 Assert-Throws {
@@ -250,7 +405,7 @@ Assert-Throws {
         }
         Set-DemoProfile @{subscriptionId='s';resourceGroupName='r';gatewayName='g';teamAObjectId='a'} baseline
     }
-} 'Policy ID omission must not authorize replacing an unrecognized allowance.' 'Unexpected workspace policies'
+} 'Policy switching is retired regardless of an existing allowance.' 'retired'
 & $module {
     $script:CallerState=@{
         gatewayId='/subscriptions/s/resourceGroups/r/providers/Microsoft.ApiManagement/aigateways/g'
@@ -373,15 +528,24 @@ $null = $server.AddScript({
     } finally { $connection.Dispose() }
 }).AddArgument($listener).AddArgument($case.status).AddArgument($case.body)
 $handle=$server.BeginInvoke()
+$spanFile=[IO.Path]::GetTempFileName()
+$previousSpanPath=$env:DEMO_CALLER_SPANS_PATH
+$env:DEMO_CALLER_SPANS_PATH=$spanFile
 try {
     $r=Invoke-DemoRequest "http://127.0.0.1:$port/" 'demo-chat' 'synthetic-not-a-credential' A test
     $received=@($server.EndInvoke($handle))[0]
     Assert-True ($r.status -eq $case.status -and $r.completion -eq $case.completion -and $r.errorCode -eq $case.errorCode) 'HTTP failures or empty choices must not turn into successful completions.'
     Assert-True (@($received.headers | Where-Object { $_ -cmatch '^traceparent: 00-[0-9a-f]{32}-[0-9a-f]{16}-01$' }).Count -eq 1) 'A W3C trace context is required.'
+    $span=Get-Content -LiteralPath $spanFile -Raw | ConvertFrom-Json
+    Assert-True ($received.headers -ccontains "traceparent: 00-$($span.traceId)-$($span.spanId)-01") 'Measured caller span must preserve the exact outgoing W3C IDs.'
+    Assert-True ($span.status -eq $r.status -and $span.team -eq 'A' -and $span.alias -eq 'demo-chat') 'Measured caller span must describe the real HTTP response and caller.'
+    Assert-True (-not (Get-Content -LiteralPath $spanFile -Raw).Contains('synthetic-not-a-credential')) 'Caller spans must never retain credentials.'
     Assert-True (-not ($r | ConvertTo-Json -Depth 10).Contains('synthetic-not-a-credential')) 'Results must not retain bearer credentials.'
     Assert-True (-not $listener.Pending()) 'The client must not retry a failed HTTP request.'
     Assert-True (($received.body | ConvertFrom-Json).stream -eq $false) 'Demo requests must be nonstreaming.'
 } finally {
+    $env:DEMO_CALLER_SPANS_PATH=$previousSpanPath
+    Remove-Item -LiteralPath $spanFile -Force
     $listener.Stop()
     $server.Dispose()
 }
