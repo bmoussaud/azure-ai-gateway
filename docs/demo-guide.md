@@ -55,6 +55,50 @@ La qualification dédiée utilise 40 RPM/40 000 TPM par backend.
 d'inférence. Les historiques sont bornés et éphémères : préserver les preuves
 avant redémarrage. Une télémétrie absente ou retardée est inconnue, pas un succès.
 
+### Voir quelle application appelle
+
+Dès l'événement d'envoi, le bandeau affiche **En cours · appel N · Application
+A/B → Azure AI Gateway**, avec l'alias appelé. Le nœud source et son seul segment
+entrant sont mis en évidence ; les pointillés animés avancent vers la passerelle.
+Les libellés « Émet · appel N » et « Dernier appel observé » distinguent l'appel
+en vol du dernier appel terminé, sans dépendre de la couleur.
+
+Le numéro et l'application viennent des événements `sending`/`responded` publiés
+par la console : jamais de la parité du numéro ou d'une alternance supposée.
+Le registre sous la carte conserve **tous** les envois, même si plusieurs sont
+reçus dans un seul rafraîchissement. Les appels déjà terminés sont présentés
+comme observations passées, pas rejoués en prétendant être du direct.
+Un rafraîchissement identique ne redémarre pas l'animation.
+
+Dans le scénario identité, le bandeau distingue **Règle prévue** et **Backend
+prouvé** pour ce même appel. Une trace retardée de l'appel précédent enrichit
+uniquement sa propre ligne ; elle ne change jamais l'identité de l'appel en vol.
+La preuve est jointe par trace ID, après la réponse correspondant au numéro,
+à l'application et à l'alias de cet envoi.
+
+En **Rejouer**, le repère porte explicitement **REJEU enregistré** avec les mêmes
+numéros et applications ; les backends ne sont révélés qu'à l'étape d'ingestion
+enregistrée. Pause arrête le mouvement. La préférence système de mouvement réduit
+supprime l'animation mais conserve les libellés/source. Stop garde l'appel en vol
+identifié jusqu'à sa fin ; un arrêt final ou une déconnexion ne prétend plus
+montrer un flux actif. Start efface aussi ce registre et les mises en évidence.
+
+La recette Chromium couvre A→B, B→B→A, les traces retardées, plusieurs événements
+reçus ensemble, Stop, Start, rechargement et mouvement réduit. Le retour en arrière
+dans un rejeu de dix appels retire toutes les lignes futures ; avancer les remet
+dans l'ordre, sans révéler prématurément leurs preuves.
+
+La console est déployée en révision prête `0000018`. La recette identité HTTPS
+de cette révision a confirmé A 5/5 sur Backend 1, B 5/5 sur Backend 2,
+dix HTTP 200 et zéro retry client, avec protection Entra/CSRF/concurrence conservée.
+Preuves locales : `.demo\caller-final-identity-acceptance.json`,
+`.demo\caller-ready-final.json` et `.demo\caller-aliases-final.json`.
+Les sept alias restent identiques, corps et ETags inclus.
+Les captures `.demo\caller-ui\caller-native-replay-*.png` sont un **rejeu Chromium
+local des vrais événements HTTPS et traces natives**, pas une capture de session
+navigateur authentifiée sur Azure. Aucune nouvelle observation visuelle du portail
+Application Insights n'est revendiquée.
+
 ### Identité : B vers Backend 2
 
 Lire dans le journal la condition portée par Backend 1 :

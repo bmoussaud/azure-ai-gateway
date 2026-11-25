@@ -122,11 +122,19 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 .viz-packet{fill:var(--cp-accent);stroke:var(--cp-surface);stroke-width:3;transition:cx .75s cubic-bezier(.16,1,.3,1),cy .75s cubic-bezier(.16,1,.3,1),opacity .3s ease}
 .viz-packet.team-b{fill:var(--cp-link)}
 .viz-packet[hidden]{display:none}
+.viz-app.is-source{stroke:var(--cp-accent);stroke-width:4;fill:var(--cp-accent-soft)}
+.viz-wire.is-source{stroke:var(--cp-accent);stroke-width:4}
+.viz-wire.is-current{stroke-dasharray:10 6;animation:viz-incoming 1s linear infinite}
+@keyframes viz-incoming{to{stroke-dashoffset:-32}}
+.viz-caller{border-left:4px solid var(--cp-accent);padding:10px 14px;background:var(--cp-surface-soft);line-height:1.5}
+.viz-caller p{margin:4px 0}.viz-call-log{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.viz-call-log li{border:1px solid var(--cp-border);padding:8px 12px;font-size:13px;max-width:100%}
+.viz-call-log li[aria-current="true"]{border:2px solid var(--cp-accent)}
 .viz-replay{font-weight:600;color:var(--cp-accent)}.viz-replay[hidden]{display:none}
 .gateway-viz:fullscreen{background:var(--cp-bg);padding:32px;overflow:auto}
 .gateway-viz:fullscreen .viz-frame svg{min-width:0;max-height:62vh}
 @media(max-width:600px){.gateway-viz{padding:14px}.viz-meter-list{grid-template-columns:1fr}.viz-head{align-items:flex-start}.viz-frame{overflow:visible}.viz-frame svg{min-width:0}}
-@media(prefers-reduced-motion:reduce){.viz-route,.viz-proof,.viz-meter-fill,.viz-packet{transition:none!important;animation:none!important;stroke-dashoffset:0!important}}
+@media(prefers-reduced-motion:reduce){.viz-route,.viz-proof,.viz-meter-fill,.viz-packet,.viz-wire{transition:none!important;animation:none!important;stroke-dashoffset:0!important}}
 </style>
 </head>
 <body>
@@ -148,12 +156,13 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <button id="viz-fullscreen" type="button">Plein écran</button>
 </div></div>
 <ol id="viz-steps" class="viz-step-list" aria-label="Étapes du scénario"></ol>
+<div class="viz-caller"><strong id="viz-caller-status" role="status" aria-live="polite">Aucun appel affiché</strong><p id="viz-caller-proof">Source publiée par la console ; backend en attente de trace native.</p></div>
 <div class="viz-frame"><svg id="topology" viewBox="0 0 1000 330" role="img" aria-labelledby="viz-svg-title viz-svg-desc">
 <title id="viz-svg-title">Flux des équipes A et B dans Azure AI Gateway</title>
 <desc id="viz-svg-desc">Les équipes appellent la passerelle via demo-chat. Les routes configurées sont en pointillés; seuls les traits pleins verts sont confirmés par des traces Azure.</desc>
 <defs><marker id="viz-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path></marker></defs>
-<g id="viz-input-a"><path id="viz-wire-A" class="viz-wire" d="M190 105 C245 105 285 145 350 150" marker-end="url(#viz-arrow)"></path><rect class="viz-app" x="20" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="100">Application A</text><text class="viz-label" x="38" y="124">Identité dédiée</text></g>
-<g id="viz-input-b"><path id="viz-wire-B" class="viz-wire" d="M190 235 C245 235 285 195 350 190" marker-end="url(#viz-arrow)"></path><rect class="viz-app" x="20" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="230">Application B</text><text class="viz-label" x="38" y="254">Identité dédiée</text></g>
+<g id="viz-input-a"><path id="viz-wire-A" class="viz-wire" d="M190 105 C245 105 285 145 350 150" marker-end="url(#viz-arrow)"></path><rect id="viz-app-A" class="viz-app" x="20" y="68" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="100">Application A</text><text id="viz-app-A-status" class="viz-label" x="38" y="124">Identité dédiée</text></g>
+<g id="viz-input-b"><path id="viz-wire-B" class="viz-wire" d="M190 235 C245 235 285 195 350 190" marker-end="url(#viz-arrow)"></path><rect id="viz-app-B" class="viz-app" x="20" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="38" y="230">Application B</text><text id="viz-app-B-status" class="viz-label" x="38" y="254">Identité dédiée</text></g>
 <g id="viz-route-layer"></g><g id="viz-proof-layer"></g><g id="viz-call-layer"></g>
 <circle id="viz-packet-A" class="viz-packet" r="9" cx="190" cy="105" hidden></circle>
 <circle id="viz-packet-B" class="viz-packet team-b" r="9" cx="190" cy="235" hidden></circle>
@@ -162,6 +171,7 @@ select{font:inherit;padding:8px;max-width:100%;background:var(--cp-surface);colo
 <g id="viz-backend-2-node"><rect id="viz-backend-2" class="viz-backend" x="810" y="198" width="170" height="74" rx="4"></rect><text class="viz-title" x="828" y="228">Backend 2</text><text class="viz-label" x="828" y="248">Modèle Foundry</text><text id="viz-backend-2-state" class="viz-backend-state" x="828" y="265">État non vérifié</text></g>
 </svg></div>
 <div class="viz-legend" aria-label="Légende"><span><i class="viz-key"></i>Route configurée</span><span><i class="viz-key proof"></i>Backend confirmé par trace Azure</span><span id="viz-replay-label" class="viz-replay" hidden>REJEU</span></div>
+<ol id="viz-caller-log" class="viz-call-log" aria-label="Tous les appels publiés, dans leur ordre réel"></ol>
 <p id="viz-caption" class="viz-note muted">Le backend réel apparaît seulement après l’ingestion de la trace native. Les points montrent les appels observés; la répartition 80/20 n’est pas garantie sur dix appels.</p>
 <p id="viz-quota-note" class="viz-note muted">Les quotas Azure ne sont pas directement observables.</p>
 <div id="viz-meters" class="viz-meter-list"></div>
@@ -306,11 +316,19 @@ const replaySteps={
 let replayState=null,replayTimer=null,vizRouteKey="",vizProofKey="",vizMeterKey="",vizJobId=null;
 function resetDiagram(){
   clearTimeout(replayTimer);replayTimer=null;replayState=null;
-  for(const id of ["viz-route-layer","viz-proof-layer","viz-call-layer","viz-meters","viz-steps"])clear(id);
+  for(const id of ["viz-route-layer","viz-proof-layer","viz-call-layer","viz-meters","viz-steps","viz-caller-log"])clear(id);
   vizRouteKey=vizProofKey=vizMeterKey="";
   el("viz-identity-lock").setAttribute("visibility","hidden");
   el("viz-replay-label").hidden=true;
-  for(const team of ["A","B"]){el(`viz-packet-${team}`).hidden=true;el(`viz-wire-${team}`).setAttribute("visibility","hidden")}
+  for(const team of ["A","B"]){
+    el(`viz-packet-${team}`).hidden=true;
+    el(`viz-wire-${team}`).setAttribute("visibility","hidden");
+    el(`viz-wire-${team}`).classList.remove("is-source","is-current");
+    el(`viz-app-${team}`).classList.remove("is-source");
+    text(`viz-app-${team}-status`,"Identité dédiée");
+  }
+  text("viz-caller-status","Aucun appel affiché");
+  text("viz-caller-proof","Source publiée par la console ; backend en attente de trace native.");
   for(const backend of [1,2]){
     el(`viz-backend-${backend}`).classList.remove("is-down");
     el(`viz-backend-${backend}-state`).classList.remove("is-confirmed","is-down");
@@ -354,6 +372,51 @@ function stepForEvent(e){
   }
   return null;
 }
+function renderCaller(job,activity,native,replaying,identityRouting){
+  const calls=activity.filter(e=>e.kind==="sending"&&["A","B"].includes(e.team)&&Number.isInteger(e.number));
+  const latest=calls.at(-1);
+  const responseFor=call=>activity.find(e=>e.kind==="responded"&&e.number===call.number&&e.team===call.team&&e.alias===call.alias);
+  const requestFor=call=>{
+    const request=job.requests?.[call.number-1];
+    return request?.team===call.team&&request.alias===call.alias?request:null;
+  };
+  const proofFor=call=>{
+    if(!responseFor(call))return null;
+    const request=requestFor(call);
+    return request?native.find(row=>row.TraceId===request.traceId):null;
+  };
+  const interrupted=activity.some(e=>["stopped","failed"].includes(e.kind));
+  const current=Boolean(latest&&!responseFor(latest)&&!interrupted&&
+    (replaying||["configuring","running"].includes(job.status)));
+  const mode=replaying?"REJEU enregistré":current?(job.stopRequested?"En cours · arrêt demandé":"En cours"):"Dernier appel observé";
+  text("viz-caller-status",latest?`${mode} · appel ${latest.number} · Application ${latest.team} → Azure AI Gateway · ${latest.alias}`:"Aucun appel affiché");
+  const proofText=call=>{
+    const proof=proofFor(call),request=requestFor(call);
+    const rule=identityRouting?`Règle prévue : ${call.team==="B"?"B éligible uniquement sur Backend 2":"A conserve Backend 1 prioritaire"}. `:"";
+    return rule+(proof?.Backend?`Backend prouvé : ${proof.Backend} · trace ${request.traceId}.`:
+      responseFor(call)?`HTTP ${responseFor(call).status} · backend en attente de trace native.`:
+      interrupted?"Appel interrompu ou état final inconnu ; aucun backend déduit.":"Envoi publié par la console ; backend non encore prouvé.");
+  };
+  text("viz-caller-proof",latest?proofText(latest):"Source publiée par la console ; backend en attente de trace native.");
+  for(const team of ["A","B"]){
+    const source=latest?.team===team,wire=el(`viz-wire-${team}`);
+    el(`viz-app-${team}`).classList.toggle("is-source",source);
+    wire.classList.toggle("is-source",source);
+    wire.classList.toggle("is-current",source&&current&&(!replaying||replayState.playing));
+    text(`viz-app-${team}-status`,source?`${current?"Émet":"Dernier"} · appel ${latest.number}`:"Identité dédiée");
+    const packet=el(`viz-packet-${team}`);
+    packet.hidden=true;
+  }
+  const log=el("viz-caller-log");
+  const numbers=new Set(calls.map(call=>String(call.number)));
+  for(const item of [...log.children]){if(!numbers.has(item.dataset.number))item.remove()}
+  for(const call of calls){
+    let item=log.querySelector(`[data-number="${call.number}"]`);
+    if(!item){item=node("li");item.dataset.number=call.number;log.append(item)}
+    item.setAttribute("aria-current",call===latest?"true":"false");
+    item.textContent=`Appel ${call.number} · Application ${call.team} → ${call.alias} · ${proofText(call)}`;
+  }
+}
 function renderViz(job){
   if(vizJobId!==(job?.id||null)){resetDiagram();vizJobId=job?.id||null}
   if(!job){resetDiagram();return}
@@ -366,13 +429,14 @@ function renderViz(job){
   el("viz-gateway-node").setAttribute("transform",mobile?"translate(-310 80)":"");
   el("viz-backend-1-node").setAttribute("transform",mobile?"translate(-790 372)":"");
   el("viz-backend-2-node").setAttribute("transform",mobile?"translate(-600 242)":"");
-  el("viz-wire-A").setAttribute("d",mobile?"M190 61 C165 95 150 130 130 170":"M190 105 C245 105 285 145 350 150");
-  el("viz-wire-B").setAttribute("d",mobile?"M380 61 C300 95 280 130 260 170":"M190 235 C245 235 285 195 350 190");
+  el("viz-wire-A").setAttribute("d",mobile?"M190 105 C165 139 150 174 130 214":"M190 105 C245 105 285 145 350 150");
+  el("viz-wire-B").setAttribute("d",mobile?"M190 235 C110 269 90 304 70 344":"M190 235 C245 235 285 195 350 190");
   const activity=replaying?job.activity.slice(0,replayState.cursor+1):job?.activity||[];
   const responseCount=replaying?activity.filter(e=>e.kind==="responded").length:(job?.requests||[]).length;
   const requests=(job?.requests||[]).slice(0,responseCount);
   const requestIds=new Set(requests.map(r=>r.traceId));
-  const native=(job?.native||[]).filter(r=>requestIds.has(r.TraceId));
+  const native=(job?.native||[]).filter(r=>requestIds.has(r.TraceId)&&
+    (!replaying||activity.some(e=>e.kind==="verified"||(e.kind==="traces"&&e.count===(job.native||[]).length))));
   const configEvent=replaying
     ?activity.findLast(e=>e.kind==="model-selected"&&e.config)
     :activity.findLast(e=>e.kind==="model-selected"&&e.config);
@@ -437,21 +501,7 @@ function renderViz(job){
       }
     }
   }
-  const phaseEvent=activity.findLast(e=>e.kind==="sending"||e.kind==="responded");
-  for(const team of ["A","B"]){
-    const packet=el(`viz-packet-${team}`);
-    const sent=phaseEvent?.team===team;
-    packet.hidden=!sent;
-    if(sent){
-      const positions=mobile
-        ?{A:{send:[130,170],return:[100,61]},B:{send:[260,170],return:[295,61]}}
-        :{A:{send:[350,150],return:[190,105]},B:{send:[350,190],return:[190,235]}};
-      const [x,y]=positions[team][phaseEvent.kind==="sending"?"send":"return"];
-      packet.setAttribute("cx",x);packet.setAttribute("cy",y);
-      packet.setAttribute("aria-label",`Appel de l’équipe ${team}`);
-      packet.setAttribute("opacity",phaseEvent.kind==="responded"?.55:1);
-    }
-  }
+  renderCaller(job,activity,native,replaying,identityRouting);
   if(requests.length){
     callLayer.append(svg("text",{x:mobile?20:420,y:mobile?565:310,class:"viz-small"},"Appels observés · backend coloré seulement si confirmé"));
     requests.slice(0,10).forEach((r,index)=>{
@@ -582,7 +632,7 @@ function render(){
     }
   }
 }
-async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");el("start").disabled=el("stop").disabled=el("scenario").disabled=true}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
+async function poll(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error(`Connexion HTTP ${r.status}`);state=await r.json();render()}catch(e){el("error").textContent=e.message;text("status","Connexion interrompue");text("action","Suivi interrompu. Dernières observations conservées ; reconnexion en cours.");for(const team of ["A","B"])el(`viz-wire-${team}`).classList.remove("is-current");text("viz-caller-status","Connexion interrompue · dernier appel conservé, aucun direct confirmé");el("start").disabled=el("stop").disabled=el("scenario").disabled=true}finally{setTimeout(poll,state?.busy||launching||awaitingJob?1000:2000)}}
 async function command(path,body){
   const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Demo-Csrf":state.csrf},body:JSON.stringify(body)});
   if(!r.ok){const detail=await r.text();let msg;try{msg=JSON.parse(detail).error}catch{}throw Error(msg||`Commande refusée (HTTP ${r.status}).`)}
