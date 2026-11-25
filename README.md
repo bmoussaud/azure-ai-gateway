@@ -10,6 +10,40 @@ La recette HTTPS des alias fixes a confirmé : référence A/B 2/2, pondération
 
 Application Insights est activé sur le composant existant et lié au DCR natif reconnu par le portail. Une nouvelle baseline A/B a été vérifiée dans ses logs et traces natifs ; l'affichage visuel de la bannière du portail n'a pas été observé.
 
+## Aperçu
+
+### Console desktop
+
+L'Atelier A/B rassemble les six modèles de scénario, l'endpoint copiable,
+les contrôles Start/Stop et l'historique des exécutions. Son apparence s'inspire
+du portail AI Gateway, mais **ce n'est pas le portail Azure officiel**.
+
+![Accueil desktop de la console de démo avec les six alias de scénario et une exécution identité vérifiée](docs/images/console-desktop-overview.png)
+
+### Identité de l'application appelante
+
+Dans le scénario `scenario-identity`, l'application B est visible dès l'envoi.
+La condition CEL exclut B du Backend 1 ; Backend 2 reste seul éligible.
+La carte distingue cette **règle prévue** du **backend réellement confirmé**
+par une trace native jointe au même appel.
+
+![Rejeu du scénario identité : application B émet l'appel 2 vers la gateway, Backend 1 exclut B par CEL et le backend servi attend encore sa preuve native](docs/images/console-desktop-identity-B.png)
+
+Ces captures ont été réalisées dans Chromium local. Le scénario identité rejoue
+des événements enregistrés lors d'une recette HTTPS réelle : à l'instant montré,
+B émet l'appel 2 et **son backend n'est pas encore prouvé**. Le rejeu n'envoie
+aucune nouvelle requête. Ces images illustrent la console, pas un portail Azure
+live ni l'état actuel du service.
+
+<details>
+<summary>Aperçu mobile : navigation repliable et cartes empilées</summary>
+
+<p>La même console s'adapte aux écrans étroits ; les cartes et les commandes restent accessibles.</p>
+
+<img src="docs/images/console-mobile-overview.png" alt="Accueil mobile de la console avec menu repliable, endpoint et cartes de scénarios et de preuves" width="390">
+
+</details>
+
 ## Utilisation
 
 PowerShell 7.4+, Azure CLI avec Bicep, droits de création et d'attribution RBAC et capacité de modèle vérifiée sont nécessaires. Utiliser deux identités applicatives existantes ou activer `provisionDemoCallers` pour créer des identités managées A/B dédiées.
